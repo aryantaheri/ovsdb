@@ -18,6 +18,7 @@ import java.util.Set;
 
 import org.opendaylight.controller.forwardingrulesmanager.FlowConfig;
 import org.opendaylight.controller.forwardingrulesmanager.IForwardingRulesManager;
+import org.opendaylight.controller.networkconfig.neutron.NeutronNetwork;
 import org.opendaylight.controller.sal.action.ActionType;
 import org.opendaylight.controller.sal.core.Node;
 import org.opendaylight.controller.sal.utils.EtherTypes;
@@ -82,7 +83,7 @@ class OF10ProviderManager extends ProviderNetworkManager {
     private void programLocalIngressTunnelBridgeRules(Node node, int tunnelOFPort, int internalVlan, int patchPort) {
         String brIntId = InternalNetworkManager.getManager().getInternalBridgeUUID(node, AdminConfigManager.getManager().getTunnelBridgeName());
         if (brIntId == null) {
-            logger.error("Failed to initialize Flow Rules for {}", node);
+            logger.error("Failed to initialize LocalIngressTunnelBridge Flow Rules for {}", node);
             return;
         }
         try {
@@ -106,7 +107,7 @@ class OF10ProviderManager extends ProviderNetworkManager {
             Status status = this.addStaticFlow(ofNode, flow);
             logger.debug("Local Ingress Flow Programming Status {} for Flow {} on {} / {}", status, flow, ofNode, node);
         } catch (Exception e) {
-            logger.error("Failed to initialize Flow Rules for {}", node, e);
+            logger.error("Failed to initialize LocalIngressTunnelBridge Flow Rules for {}", node, e);
         }
     }
 
@@ -121,7 +122,7 @@ class OF10ProviderManager extends ProviderNetworkManager {
             int internalVlan, int tunnelOFPort) {
         String brIntId = InternalNetworkManager.getManager().getInternalBridgeUUID(node, AdminConfigManager.getManager().getTunnelBridgeName());
         if (brIntId == null) {
-            logger.error("Failed to initialize Flow Rules for {}", node);
+            logger.error("Failed to initialize RemoteEgressTunnelBridge Flow Rules for {}", node);
             return;
         }
         try {
@@ -147,7 +148,7 @@ class OF10ProviderManager extends ProviderNetworkManager {
             Status status = this.addStaticFlow(ofNode, flow);
             logger.debug("Remote Egress Flow Programming Status {} for Flow {} on {} / {}", status, flow, ofNode, node);
         } catch (Exception e) {
-            logger.error("Failed to initialize Flow Rules for {}", node, e);
+            logger.error("Failed to initialize RemoteEgressTunnelBridge Flow Rules for {}", node, e);
         }
     }
 
@@ -161,7 +162,7 @@ class OF10ProviderManager extends ProviderNetworkManager {
     private void programFloodEgressTunnelBridgeRules(Node node, int patchPort, int internalVlan, int tunnelOFPort) {
         String brIntId = InternalNetworkManager.getManager().getInternalBridgeUUID(node, AdminConfigManager.getManager().getTunnelBridgeName());
         if (brIntId == null) {
-            logger.error("Failed to initialize Flow Rules for {}", node);
+            logger.error("Failed to initialize FloodEgressTunnelBridge Flow Rules for {}", node);
             return;
         }
         try {
@@ -208,7 +209,7 @@ class OF10ProviderManager extends ProviderNetworkManager {
                               status, flow, ofNode, node);
             }
         } catch (Exception e) {
-            logger.error("Failed to initialize Flow Rules for {}", node, e);
+            logger.error("Failed to initialize FloodEgressTunnelBridge Flow Rules for {}", node, e);
         }
     }
 
@@ -350,6 +351,7 @@ class OF10ProviderManager extends ProviderNetworkManager {
     }
 
     private Status addTunnelPort (Node node, String tunnelType, InetAddress src, InetAddress dst, String key) {
+        logger.info("addTunnelPort {} {} {} {} {}", node, tunnelType, src, dst, key);
         try {
             String bridgeUUID = null;
             String tunnelBridgeName = AdminConfigManager.getManager().getTunnelBridgeName();
@@ -411,6 +413,13 @@ class OF10ProviderManager extends ProviderNetworkManager {
             options.put("key", key);
             options.put("local_ip", src.getHostAddress());
             options.put("remote_ip", dst.getHostAddress());
+            if (tunnelType.equalsIgnoreCase("ipsec_gre")){
+                logger.info("IPSec tunnel is requested for Interface {}", tunInterface);
+                String networkName = TenantNetworkManager.getManager().getNetworkNameForSegmentationId(key);
+                String ipsecPsk = networkName+"psk";
+                logger.info("IPSec tunnel key: {}", ipsecPsk);
+                options.put("psk", ipsecPsk);
+            }
             tunInterface.setOptions(options);
             Status status = ovsdbTable.updateRow(node, Interface.NAME.getName(), tunnelPortUUID, interfaceUUID, tunInterface);
             logger.debug("Tunnel {} add status : {}", tunInterface, status);

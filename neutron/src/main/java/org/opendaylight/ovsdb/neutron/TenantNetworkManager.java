@@ -180,6 +180,15 @@ public class TenantNetworkManager {
         return null;
     }
 
+    public String getNetworkNameForSegmentationId(String segmentationId){
+        INeutronNetworkCRUD neutronNetworkService = (INeutronNetworkCRUD)ServiceHelper.getGlobalInstance(INeutronNetworkCRUD.class, this);
+        List <NeutronNetwork> networks = neutronNetworkService.getAllNetworks();
+        for (NeutronNetwork network : networks) {
+            if (network.getProviderSegmentationID().equalsIgnoreCase(segmentationId)) return network.getNetworkName();
+        }
+        return null;
+    }
+
     private boolean isInterfacePresentInTenantNetwork (String portId, String networkId) {
         INeutronPortCRUD neutronPortService = (INeutronPortCRUD)ServiceHelper.getGlobalInstance(INeutronPortCRUD.class, this);
         NeutronPort neutronPort = neutronPortService.getPort(portId);

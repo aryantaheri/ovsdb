@@ -211,8 +211,15 @@ public class SouthboundHandler extends BaseHandler implements OVSDBInventoryList
         }
         NeutronNetwork network = TenantNetworkManager.getManager().getTenantNetworkForInterface(intf);
         if (network != null) {
-            ProviderNetworkManager.getManager().createTunnels(network.getProviderNetworkType(),
-                    network.getProviderSegmentationID(), node, intf);
+            if(network.getNetworkName().startsWith("ipsec")){
+                ProviderNetworkManager.getManager().createTunnels("ipsec_gre",
+                        network.getProviderSegmentationID(), node, intf);
+                logger.info("IPSec tunnels requested for network: {} {}", network.getNetworkName(), network);
+            } else{
+                ProviderNetworkManager.getManager().createTunnels(network.getProviderNetworkType(),
+                        network.getProviderSegmentationID(), node, intf);
+                logger.info("Non-IPSec tunnels requested for network: {} {}", network.getNetworkName(), network);
+            }
         }
     }
 
