@@ -29,13 +29,9 @@ import io.netty.util.CharsetUtil;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +45,6 @@ import org.opendaylight.controller.sal.connection.ConnectionConstants;
 import org.opendaylight.controller.sal.connection.IPluginInConnectionService;
 import org.opendaylight.controller.sal.core.Node;
 import org.opendaylight.controller.sal.core.Property;
-import org.opendaylight.controller.sal.utils.NetUtils;
 import org.opendaylight.controller.sal.utils.ServiceHelper;
 import org.opendaylight.controller.sal.utils.Status;
 import org.opendaylight.controller.sal.utils.StatusCode;
@@ -108,7 +103,7 @@ public class ConnectionService implements IPluginInConnectionService, IConnectio
         int listenPort = defaultOvsdbPort;
         String portString = System.getProperty("ovsdb.listenPort");
         if (portString != null) {
-            listenPort = Integer.decode(portString).intValue();
+            listenPort = Integer.decode(portString);
         }
         ovsdbListenPort = listenPort;
     }
@@ -455,7 +450,7 @@ public class ConnectionService implements IPluginInConnectionService, IConnectio
         String portString = System.getProperty("of.listenPort");
         if (portString != null) {
             try {
-                openFlowPort = Short.decode(portString).shortValue();
+                openFlowPort = Short.decode(portString);
             } catch (NumberFormatException e) {
                 logger.warn("Invalid port:{}, use default({})", portString,
                         openFlowPort);

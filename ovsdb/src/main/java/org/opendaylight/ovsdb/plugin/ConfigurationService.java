@@ -45,7 +45,6 @@ import org.opendaylight.ovsdb.lib.notation.OvsDBMap;
 import org.opendaylight.ovsdb.lib.notation.OvsDBSet;
 import org.opendaylight.ovsdb.lib.notation.UUID;
 import org.opendaylight.ovsdb.lib.table.Bridge;
-import org.opendaylight.ovsdb.lib.table.Capability;
 import org.opendaylight.ovsdb.lib.table.Controller;
 import org.opendaylight.ovsdb.lib.table.Interface;
 import org.opendaylight.ovsdb.lib.table.Manager;
@@ -2007,16 +2006,21 @@ public class ConfigurationService implements IPluginInBridgeDomainConfigService,
 
     public void _forceConnect (CommandInterpreter ci) {
         String force = ci.nextArgument();
-        if (force.equalsIgnoreCase("YES")) forceConnect = true;
-        else if (force.equalsIgnoreCase("NO")) forceConnect = false;
-        else ci.println("Please enter YES or NO.");
+        if (force.equalsIgnoreCase("YES")) {
+            forceConnect = true;
+        }
+        else if (force.equalsIgnoreCase("NO")) {
+            forceConnect = false;
+        }
+        else {
+            ci.println("Please enter YES or NO.");
+        }
         ci.println("Current ForceConnect State : "+forceConnect);
-        return;
     }
 
     @Override
     public String getHelp() {
-        StringBuffer help = new StringBuffer();
+        StringBuilder help = new StringBuilder();
         help.append("---OVSDB CLI---\n");
         help.append("\t ovsconnect <ConnectionName> <ip-address>                        - Connect to OVSDB\n");
         help.append("\t addBridge <Node> <BridgeName>                                   - Add Bridge\n");
