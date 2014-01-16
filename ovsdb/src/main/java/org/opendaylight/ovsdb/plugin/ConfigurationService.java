@@ -1967,6 +1967,16 @@ public class ConfigurationService implements IPluginInBridgeDomainConfigService,
             return;
         }
 
+        // Reading other options, e.g. ipsec psk
+        Map<String, String> customConfigs = new HashMap<String, String>();
+        while(true) {
+            String configKey = ci.nextArgument();
+            if (configKey == null) break;
+            String configValue = ci.nextArgument();
+            if (configValue == null) break;
+            customConfigs.put(configKey, configValue);
+        }
+
         try {
             InetAddress.getByName(remoteIp);
         }  catch (Exception e) {
@@ -1979,6 +1989,10 @@ public class ConfigurationService implements IPluginInBridgeDomainConfigService,
         configs.put(ConfigConstants.TYPE, "TUNNEL");
         configs.put(ConfigConstants.TUNNEL_TYPE, tunnelType);
         configs.put(ConfigConstants.DEST_IP, remoteIp);
+        if (customConfigs.size() > 0){
+            configs.put(ConfigConstants.CUSTOM, customConfigs);
+            ci.println(configs.toString());
+        }
 
         Status status;
         Node node = Node.fromString(nodeName);
@@ -2022,15 +2036,15 @@ public class ConfigurationService implements IPluginInBridgeDomainConfigService,
     public String getHelp() {
         StringBuilder help = new StringBuilder();
         help.append("---OVSDB CLI---\n");
-        help.append("\t ovsconnect <ConnectionName> <ip-address>                        - Connect to OVSDB\n");
-        help.append("\t addBridge <Node> <BridgeName>                                   - Add Bridge\n");
-        help.append("\t getBridgeDomains <Node>                                         - Get Bridges\n");
-        help.append("\t deleteBridgeDomain <Node> <BridgeName>                          - Delete a Bridge\n");
-        help.append("\t addPort <Node> <BridgeName> <PortName> <type> <options pairs>   - Add Port\n");
-        help.append("\t deletePort <Node> <BridgeName> <PortName>                       - Delete Port\n");
-        help.append("\t addPortVlan <Node> <BridgeName> <PortName> <vlan>               - Add Port, Vlan\n");
-        help.append("\t addTunnel <Node> <Bridge> <Port> <tunnel-type> <remote-ip>      - Add Tunnel\n");
-        help.append("\t printCache <Node>                                               - Prints Table Cache");
+        help.append("\t ovsconnect <ConnectionName> <ip-address>                                        - Connect to OVSDB\n");
+        help.append("\t addBridge <Node> <BridgeName>                                                   - Add Bridge\n");
+        help.append("\t getBridgeDomains <Node>                                                         - Get Bridges\n");
+        help.append("\t deleteBridgeDomain <Node> <BridgeName>                                          - Delete a Bridge\n");
+        help.append("\t addPort <Node> <BridgeName> <PortName> <type> <options pairs>                   - Add Port\n");
+        help.append("\t deletePort <Node> <BridgeName> <PortName>                                       - Delete Port\n");
+        help.append("\t addPortVlan <Node> <BridgeName> <PortName> <vlan>                               - Add Port, Vlan\n");
+        help.append("\t addTunnel <Node> <Bridge> <Port> <tunnel-type> <remote-ip> <options pairs>      - Add Tunnel\n");
+        help.append("\t printCache <Node>                                                               - Prints Table Cache");
         return help.toString();
     }
 }
