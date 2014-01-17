@@ -334,6 +334,8 @@ public class ConfigurationService implements IPluginInBridgeDomainConfigService,
                             tags.add(BigInteger.valueOf(Integer.parseInt((String)configs.get(ConfigConstants.VLAN))));
                         } else if (type.equalsIgnoreCase(OvsdbType.PortType.PATCH.name())) {
                             interfaceRow.setType(type.toLowerCase());
+                        } else if (type.equalsIgnoreCase(OvsdbType.PortType.INTERNAL.name())){
+                            interfaceRow.setType(type.toLowerCase());
                         }
                     }
                     if (options != null) {
