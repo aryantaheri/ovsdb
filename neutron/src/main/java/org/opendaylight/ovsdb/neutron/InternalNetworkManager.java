@@ -133,7 +133,9 @@ public class InternalNetworkManager {
         if (!status.isSuccess()) logger.debug("Integration Bridge Creation Status : "+status.toString());
     }
 
-    private Status addInternalBridge (Node node, String bridgeName, String localPathName, String remotePatchName) throws Exception {
+
+
+    public Status addInternalBridge (Node node, String bridgeName, String localPathName, String remotePatchName) throws Exception {
         OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
 
         String bridgeUUID = this.getInternalBridgeUUID(node, bridgeName);
@@ -163,7 +165,7 @@ public class InternalNetworkManager {
         return new Status(StatusCode.SUCCESS);
     }
 
-    private Status addPatchPort (Node node, String bridgeUUID, String portName, String patchName) throws Exception {
+    public Status addPatchPort (Node node, String bridgeUUID, String portName, String patchName) throws Exception {
         OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
 
         Port patchPort = new Port();

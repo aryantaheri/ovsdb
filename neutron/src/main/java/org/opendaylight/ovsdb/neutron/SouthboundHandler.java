@@ -183,6 +183,10 @@ public class SouthboundHandler extends BaseHandler implements OVSDBInventoryList
                     Interface intf = (Interface)this.ovsdbConfigService.getRow(node, Interface.NAME.getName(), intfUUID.toString());
                     NeutronNetwork network = TenantNetworkManager.getManager().getTenantNetworkForInterface(intf);
                     if (network != null && !network.getRouterExternal()) {
+                        // TODO These are called for each interface, without requiring to know the interface
+                        // Might be useful when a port is bonded to two interfaces which belong to different networks
+                        TenantNetworkManager.getManager().prepareTenantNetworkBridges(node, network);
+                        TenantNetworkManager.getManager().adjustPortBridgeAttachment(node, network, uuid, port, intf);
                         TenantNetworkManager.getManager().programTenantNetworkInternalVlan(node, uuid, network);
                     }
                 } catch (Exception e) {

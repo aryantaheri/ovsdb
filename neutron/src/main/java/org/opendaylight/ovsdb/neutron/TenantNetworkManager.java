@@ -30,6 +30,7 @@ import org.opendaylight.controller.sal.core.NodeConnector;
 import org.opendaylight.controller.sal.utils.HexEncode;
 import org.opendaylight.controller.sal.utils.ServiceHelper;
 import org.opendaylight.controller.sal.utils.Status;
+import org.opendaylight.controller.sal.utils.StatusCode;
 import org.opendaylight.ovsdb.lib.notation.OvsDBSet;
 import org.opendaylight.ovsdb.lib.notation.UUID;
 import org.opendaylight.ovsdb.lib.table.Bridge;
@@ -231,6 +232,8 @@ public class TenantNetworkManager {
     }
 
     private void addPortToTenantNetworkContainer(Node node, String portUUID, NeutronNetwork network) {
+        logger.debug("addPortToTenantNetworkContainer Node {}, portUUID {}, network {}", node, portUUID, network);
+
         IContainerManager containerManager = (IContainerManager)ServiceHelper.getGlobalInstance(IContainerManager.class, this);
         if (containerManager == null) {
             logger.error("ContainerManager is not accessible");
@@ -325,6 +328,262 @@ public class TenantNetworkManager {
         ContainerConfig config = new ContainerConfig();
         config.setContainer(networkID);
         containerManager.removeContainer(config);
+    }
+
+    /*
+     * Creating dedicated bridges for a tenant's network
+     * Tenant network UUID: 93409XX
+     *
+    Bridge "brint-93409"
+        Controller "tcp:192.168.1.234:6633"
+            is_connected: true
+        Port "p-tun-93409"
+            Interface "p-tun-93409"
+                type: patch
+                options: {peer="p-int-93409"}
+        Port "brint-93409"
+            Interface "brint-93409"
+    Bridge "brtun-93409"
+        Controller "tcp:192.168.1.234:6633"
+            is_connected: true
+        Port "brtun-93409"
+            Interface "brtun-93409"
+        Port "p-int-93409"
+            Interface "p-int-93409"
+                type: patch
+                options: {peer="p-tun-93409"}
+        Port "p-c-t-93409"
+            Interface "p-c-t-93409"
+                type: patch
+                options: {peer="p-t-c-93409"}
+    Bridge br-tun
+        Controller "tcp:192.168.1.234:6633"
+            is_connected: true
+        Port "p-t-c-93409"
+            Interface "p-t-c-93409"
+                type: patch
+                options: {peer="p-c-t-93409"}
+        Port br-tun
+            Interface br-tun
+        Port patch-int
+            Interface patch-int
+                type: patch
+                options: {peer=patch-tun}
+
+     */
+    private void createDedicatedBridgesForNetwork(Node node, NeutronNetwork network) throws Exception {
+
+        logger.debug("createDedicatedBridgesForNetwork Node {}, Network {}", node, network);
+        String networkBrTun = getDedicatedTunBridgeNameForNetwork(network);
+        String networkBrInt = getDedicatedIntBridgeNameForNetwork(network);
+
+        String networkPatchTun = getPatchToDedicatedTunForNetwork(network);
+        String networkPatchInt = getPatchToDedicatedIntForNetwork(network);
+
+        String networkBrTunUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, networkBrTun);
+        String networkBrIntUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, networkBrInt);
+
+        Status status;
+        //TODO: It might be better to check the patch port as well, and create them if missing
+        if (networkBrIntUUID == null){
+            status = InternalNetworkManager.getManager().addInternalBridge(node, networkBrInt, networkPatchTun, networkPatchInt);
+            if (!status.isSuccess()) logger.error("Dedicated Integration Bridge Creation Status {}, for networkBrInt {}, networkPatchTun {}, networkPatchInt {}", status.toString(), networkBrInt, networkPatchTun, networkPatchInt);
+            logger.debug("Dedicated Integration Bridge Creation Status {}, for networkBrInt {}, networkPatchTun {}, networkPatchInt {}", status.toString(), networkBrInt, networkPatchTun, networkPatchInt);
+        } else {
+            logger.debug("Dedicated Integration Bridge already exists {}", networkBrIntUUID);
+        }
+
+        //TODO: It might be better to check the patch port as well, and create them if missing
+        if (networkBrTunUUID == null){
+            status = InternalNetworkManager.getManager().addInternalBridge(node, networkBrTun, networkPatchInt, networkPatchTun);
+            if (!status.isSuccess()) logger.error("Dedicated Tunnel Bridge Creation Status {}, for networkBrTun {}, networkPatchInt {}, networkPatchTun {}", status.toString(), networkBrTun, networkPatchInt, networkPatchTun);
+            logger.debug("Dedicated Tunnel Bridge Creation Status {}, for networkBrTun {}, networkPatchInt {}, networkPatchTun {}", status.toString(), networkBrTun, networkPatchInt, networkPatchTun);
+
+            // Adding patch ports for br-tun and brtun-XY (tenant network bridge)
+            String brTun = AdminConfigManager.getManager().getTunnelBridgeName();
+            String brTunUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, brTun);
+
+            networkBrTunUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, networkBrTun);
+
+            String networkPatchTunCPU = getPatchToDedicatedTunFromCPUForNetwork(network);
+            String networkPatchCPUTun = getPatchToCPUFromDedicatedTunForNetwork(network);
+
+            status = InternalNetworkManager.getManager().addPatchPort(node, networkBrTunUUID, networkPatchCPUTun, networkPatchTunCPU);
+            if (!status.isSuccess())
+                logger.error("Adding patch port failed {}, for networkBrTunUUID {}, networkPatchCPUTun {}, networkPatchTunCPU {}", status.toString(), networkBrTunUUID, networkPatchCPUTun, networkPatchTunCPU);
+
+            status = InternalNetworkManager.getManager().addPatchPort(node, brTunUUID, networkPatchTunCPU, networkPatchCPUTun);
+            if (!status.isSuccess())
+                logger.error("Adding patch port failed {}, for brTunUUID {}, networkPatchTunCPU {}, networkPatchCPUTun {}", status.toString(), brTunUUID, networkPatchTunCPU, networkPatchCPUTun);
+
+        } else {
+            logger.debug("Dedicated Tunnel Bridge already exists {}", networkBrIntUUID);
+        }
+    }
+
+    /*
+     * TODO: Move these to AdminConfigurationManager
+     * Linux bridge length is 14, and for OpenStack compatibility we restrict it to 11
+     */
+    private String getDedicatedTunBridgeNameForNetwork(NeutronNetwork network){
+        return ("brtun-"+network.getNetworkUUID()).substring(0, 11);
+    }
+
+    /*
+     * TODO: Move these to AdminConfigurationManager
+     * Linux bridge length is 14, and for OpenStack compatibility we restrict it to 11
+     */
+    private String getDedicatedIntBridgeNameForNetwork(NeutronNetwork network){
+        return ("brint-"+network.getNetworkUUID()).substring(0, 11);
+    }
+
+    private String getPatchToDedicatedIntForNetwork(NeutronNetwork network){
+        return ("p-int-"+network.getNetworkUUID()).substring(0, 11);
+    }
+
+    private String getPatchToDedicatedTunForNetwork(NeutronNetwork network){
+        return ("p-tun-"+network.getNetworkUUID()).substring(0, 11);
+    }
+
+    private String getPatchToDedicatedTunFromCPUForNetwork(NeutronNetwork network){
+        return ("p-t-c-"+network.getNetworkUUID()).substring(0, 11);
+    }
+
+    private String getPatchToCPUFromDedicatedTunForNetwork(NeutronNetwork network){
+        return ("p-c-t-"+network.getNetworkUUID()).substring(0, 11);
+    }
+
+    public void prepareTenantNetworkBridges(Node node, NeutronNetwork network) {
+// FIXME: For the sake of simplicity not using    network.isDedicatedBridges()
+//        if (!network.isDedicatedBridges() && !network.getNetworkName().toLowerCase().startsWith("secnet")) {
+        if (!network.getNetworkName().toLowerCase().startsWith("secnet")) {
+            logger.debug("prepareTenantNetworkBridges Network {} doesn't require dedicated bridges. Skipping.", network);
+            return;
+        }
+        try {
+            this.createDedicatedBridgesForNetwork(node, network);
+        } catch (Exception e) {
+            logger.error("Error creating dedicated tenant network bridges "+node.toString(), e);
+        }
+        // FIXME: Initialized flow accordingly
+        // ProviderNetworkManager.getManager().initializeFlowRules(node);
+    }
+
+    /**
+     * Check if network requires dedicated bridges and
+     * move port to the network integration bridge if needed
+     * @param intf
+     * @param port
+     * @param portUUID
+     * @param network
+     * @param node
+     */
+    public void adjustPortBridgeAttachment(Node node, NeutronNetwork network, String portUUID, Port port, Interface intf){
+        // FIXME: For the sake of simplicity not using    network.isDedicatedBridges()
+        // if (!network.isDedicatedBridges() && !network.getNetworkName().toLowerCase().startsWith("secnet")) {
+      if (!network.getNetworkName().toLowerCase().startsWith("secnet")) {
+          logger.debug("adjustPortBridgeAttachment: Network={} doesn't require port adjustment. Skipping.", network.getNetworkName());
+          return;
+      }
+      // if port is (attached to br-int && belongs to this network && type is tap) move it
+      // 1- Retrieve br-int ports and check if this port is there
+      // 2- Port already belongs to the network, otherwise we won't ended up here
+      // 3- All ports in br-int are of tap type
+      String brIntUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, AdminConfigManager.getManager().getIntegrationBridgeName());
+      if (brIntUUID == null) {
+          logger.error("Failed to retrieve Integration Bridge in Node {}", node);
+          return;
+      }
+
+      String networkIntBrName = getDedicatedIntBridgeNameForNetwork(network);
+      String networkIntBrUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, networkIntBrName);
+
+      try {
+          boolean portInIntBr = isPortPresentInBridge(node, brIntUUID, portUUID);
+          boolean portInNetworkIntBr = isPortPresentInBridge(node, networkIntBrUUID, portUUID);
+
+          if (portInIntBr && !portInNetworkIntBr){
+              Status status = attachPortToBridge(node, networkIntBrUUID, portUUID);
+              if (!status.isSuccess()){
+                  logger.error("adjustPortBridgeAttachment: attachPortToBridge was not successful {}", status.toString());
+              } else{
+                  logger.debug("adjustPortBridgeAttachment: attachPortToBridge was successful {}", status.toString());
+              }
+
+              status = detachPortFromBridge(node, brIntUUID, portUUID);
+              if (!status.isSuccess()){
+                  logger.error("adjustPortBridgeAttachment: detachPortFromBridge was not successful {}", status.toString());
+              } else{
+                  logger.debug("adjustPortBridgeAttachment: detachPortFromBridge was successful {}", status.toString());
+              }
+          } else {
+              logger.debug("adjustPortBridgeAttachment: Skipping adjustment, port isn't attached to int bridge, or is also attached to network int br, or network int bridge doesn't exist");
+          }
+      } catch (Exception e) {
+          logger.error("Can not adjust port bridge attachment", e);
+      }
+
+    }
+
+    private Status attachPortToBridge(Node node, String networkIntBrUUID, String portUUID) throws Exception {
+        logger.debug("attachPortToBridge Node {}, NetworkIntBrUUID {}, PortUUID {}", node, networkIntBrUUID, portUUID);
+
+        OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
+        Bridge networkIntBr = (Bridge)ovsdbTable.getRow(node, Bridge.NAME.getName(), networkIntBrUUID);
+
+        if(networkIntBr == null){
+            logger.error("attachPortToBridge: networkIntBr is null, UUID: {}", networkIntBrUUID);
+            return new Status(StatusCode.NOTFOUND);
+        }
+        OvsDBSet<UUID> ports = networkIntBr.getPorts();
+        logger.debug("attachPortToBridge: Number of ports in networkIntBr before updating {} is {}", networkIntBr, ports.size());
+        ports.add(new UUID(portUUID));
+
+        Bridge newNetworkIntBr = new Bridge();
+        newNetworkIntBr.setPorts(ports);
+        Status status = ovsdbTable.updateRow(node, Bridge.NAME.getName(), null, networkIntBrUUID, newNetworkIntBr);
+        //TODO For debugging purpose only, must be removed
+        Bridge newNetworkIntBr2 = (Bridge)ovsdbTable.getRow(node, Bridge.NAME.getName(), networkIntBrUUID);
+        logger.debug("attachPortToBridge: Number of ports in networkIntBr after updating {} is {}", newNetworkIntBr2, newNetworkIntBr2.getPorts().size());
+        return status;
+    }
+
+    private Status detachPortFromBridge(Node node, String brUUID, String portUUID) throws Exception{
+        logger.debug("detachPortFromBridge Node {}, brUUID {}, PortUUID {}", node, brUUID, portUUID);
+
+        OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
+        Bridge intBr = (Bridge)ovsdbTable.getRow(node, Bridge.NAME.getName(), brUUID);
+
+        if (intBr == null){
+            logger.error("detachPortFromBridge: bridge is null, UUID: {}", brUUID);
+            return new Status(StatusCode.NOTFOUND);
+        }
+
+        OvsDBSet<UUID> ports = intBr.getPorts();
+        UUID port = new UUID(portUUID);
+        if (ports.contains(port)){
+            ports.remove(port);
+        } else {
+            logger.error("detachPortFromBridge: Port {} is not in Bridge {} ports.", portUUID, brUUID);
+        }
+        Bridge newBr = new Bridge();
+        newBr.setPorts(ports);
+        Status status = ovsdbTable.updateRow(node, Bridge.NAME.getName(), null, brUUID, newBr);
+        return status;
+    }
+
+    private boolean isPortPresentInBridge(Node node, String bridgeUUID, String portUUID) throws Exception{
+        OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
+        Bridge bridge = (Bridge)ovsdbTable.getRow(node, Bridge.NAME.getName(), bridgeUUID);
+        if (bridge != null) {
+            Set<UUID> ports = bridge.getPorts();
+            for (UUID portID : ports) {
+                if (portID.toString().equalsIgnoreCase(portUUID)) return true;
+            }
+        } else {
+            logger.debug("isPortPresentInBridge Bridge {} doesn't exist", bridgeUUID);
+        }
+        return false;
     }
 
 }
