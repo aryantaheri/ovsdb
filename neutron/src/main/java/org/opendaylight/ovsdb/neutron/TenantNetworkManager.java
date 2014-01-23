@@ -38,6 +38,7 @@ import org.opendaylight.ovsdb.lib.table.Interface;
 import org.opendaylight.ovsdb.lib.table.Port;
 import org.opendaylight.ovsdb.lib.table.internal.Table;
 import org.opendaylight.ovsdb.plugin.OVSDBConfigService;
+import org.opendaylight.ovsdb.plugin.StatusWithUuid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -503,18 +504,24 @@ public class TenantNetworkManager {
           boolean portInNetworkIntBr = isPortPresentInBridge(node, networkIntBrUUID, portUUID);
 
           if (portInIntBr && !portInNetworkIntBr){
-              Status status = attachPortToBridge(node, networkIntBrUUID, portUUID);
+//              Status status = attachPortToBridge(node, networkIntBrUUID, portUUID);
+//              if (!status.isSuccess()){
+//                  logger.error("adjustPortBridgeAttachment: attachPortToBridge was not successful {}", status.toString());
+//              } else{
+//                  logger.debug("adjustPortBridgeAttachment: attachPortToBridge was successful {}", status.toString());
+//              }
+//
+//              status = detachPortFromBridge(node, brIntUUID, portUUID);
+//              if (!status.isSuccess()){
+//                  logger.error("adjustPortBridgeAttachment: detachPortFromBridge was not successful {}", status.toString());
+//              } else{
+//                  logger.debug("adjustPortBridgeAttachment: detachPortFromBridge was successful {}", status.toString());
+//              }
+              Status status = updatePortBridge(node, brIntUUID, networkIntBrUUID, portUUID, intf);
               if (!status.isSuccess()){
-                  logger.error("adjustPortBridgeAttachment: attachPortToBridge was not successful {}", status.toString());
+                  logger.error("adjustPortBridgeAttachment: updatePortBridge was not successful {}", status.toString());
               } else{
-                  logger.debug("adjustPortBridgeAttachment: attachPortToBridge was successful {}", status.toString());
-              }
-
-              status = detachPortFromBridge(node, brIntUUID, portUUID);
-              if (!status.isSuccess()){
-                  logger.error("adjustPortBridgeAttachment: detachPortFromBridge was not successful {}", status.toString());
-              } else{
-                  logger.debug("adjustPortBridgeAttachment: detachPortFromBridge was successful {}", status.toString());
+                  logger.debug("adjustPortBridgeAttachment: updatePortBridge was successful {}", status.toString());
               }
           } else {
               logger.debug("adjustPortBridgeAttachment: Skipping adjustment, port isn't attached to int bridge, or is also attached to network int br, or network int bridge doesn't exist");
@@ -523,6 +530,65 @@ public class TenantNetworkManager {
           logger.error("Can not adjust port bridge attachment", e);
       }
 
+    }
+
+    private Status updatePortBridge(Node node, String brIntUUID, String networkIntBrUUID, String portUUID, Interface intf) throws Exception {
+        logger.debug("updatePortBridge Node {}, NetworkIntBrUUID {}, portUUID {}, Interface {}", node, networkIntBrUUID, portUUID, intf);
+        OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
+        // TODO Might be better to re-use the port object , received in SouthBoundHandler
+        Port port = (Port)ovsdbTable.getRow(node, Port.NAME.getName(), portUUID);
+        Status status = ovsdbTable.deleteRow(node, Port.NAME.getName(), portUUID);
+        if (!status.isSuccess()){
+            logger.error("updatePortBridge: Port delete failed for Node {}, Port {}, Status {}", node, port, status.toString());
+            return status;
+        } else {
+            logger.debug("updatePortBridge: Port delete succeed for Node {}, Port {}, Status {}", node, port, status.toString());
+        }
+
+        Port newPort = new Port();
+        newPort.setExternal_ids(port.getExternal_ids());
+//        newPort.setMac(port.getMac());
+        newPort.setName(port.getName());
+        newPort.setOther_config(port.getOther_config());
+        newPort.setTag(port.getTag());
+        newPort.setTrunks(port.getTrunks());
+        StatusWithUuid statusWithUuid = ovsdbTable.insertRow(node, Port.NAME.getName(), networkIntBrUUID, newPort);
+
+        if (!statusWithUuid.isSuccess()){
+            logger.error("updatePortBridge: Port insert failed for Node {}, Bridge {}, Port {}, Status {}", node, networkIntBrUUID, newPort, statusWithUuid.toString());
+            return statusWithUuid;
+        } else {
+            logger.debug("updatePortBridge: Port insert succeed for Node {}, Bridge {}, Port {}, Status {}", node, networkIntBrUUID, newPort, statusWithUuid.toString());
+        }
+
+        String newPortUUID = statusWithUuid.getUuid().toString();
+
+        String newInterfaceUUID = null;
+        int timeout = 6;
+        while ((newInterfaceUUID == null) && (timeout > 0)) {
+            newPort = (Port)ovsdbTable.getRow(node, Port.NAME.getName(), newPortUUID);
+            OvsDBSet<UUID> interfaces = newPort.getInterfaces();
+            if (interfaces == null || interfaces.size() == 0) {
+                // Wait for the OVSDB update to sync up the Local cache.
+                Thread.sleep(500);
+                timeout--;
+                continue;
+            }
+            newInterfaceUUID = interfaces.toArray()[0].toString();
+        }
+
+        if (newInterfaceUUID == null) {
+            logger.error("updatePortBridge: newInterfaceUUID is null for newPortUUID {}", newPortUUID);
+            return new Status(StatusCode.INTERNALERROR);
+        }
+
+        Interface newInterface = new Interface();
+        newInterface.setExternal_ids(intf.getExternal_ids());
+        if (newInterface.getExternal_ids() == null || newInterface.getExternal_ids().size() == 0){
+            logger.error("updatePortBridge External_ids is missing for received interface {}", intf);
+        }
+        status = ovsdbTable.updateRow(node, Interface.NAME.getName(), newPortUUID, newInterfaceUUID, newInterface);
+        return status;
     }
 
     private Status attachPortToBridge(Node node, String networkIntBrUUID, String portUUID) throws Exception {
