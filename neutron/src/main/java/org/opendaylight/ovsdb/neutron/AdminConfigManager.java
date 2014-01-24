@@ -14,8 +14,11 @@ import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.opendaylight.controller.networkconfig.neutron.NeutronNetwork;
 import org.opendaylight.controller.sal.core.Node;
 import org.opendaylight.controller.sal.utils.ServiceHelper;
+import org.opendaylight.ovsdb.lib.notation.OvsDBMap;
+import org.opendaylight.ovsdb.lib.table.Interface;
 import org.opendaylight.ovsdb.lib.table.Open_vSwitch;
 import org.opendaylight.ovsdb.lib.table.internal.Table;
 import org.opendaylight.ovsdb.plugin.OVSDBConfigService;
@@ -165,5 +168,45 @@ public class AdminConfigManager {
         } catch (Exception e) {
             logger.error("Error populating Tunnel Endpoint for Node {} ", node, e);
         }
+    }
+    
+    public InetAddress getDedicatedNetworkTunnelEndPoint (Node node, NeutronNetwork network){
+        logger.debug("getTunnelEndPointForNetwork node {} network {}", node, network);
+        InetAddress address = null;    
+        OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
+        String networkExInterfaceName = TenantNetworkManager.getManager().getExInfNameForNetwork(network);
+        Interface networkExInterface = null;
+        try {
+            Map<String, Table<?>> interfaces = ovsdbTable.getRows(node, Interface.NAME.getName());
+            if (interfaces != null) {
+                for (String intfUUID : interfaces.keySet()) {
+                    Interface intf = (Interface) interfaces.get(intfUUID);
+                    if (intf.getName().equalsIgnoreCase(networkExInterfaceName)){
+                        networkExInterface = intf;
+                        break;
+                    }
+                }
+                if (networkExInterface == null){
+                    logger.error("getTunnelEndPointForNetwork failed: exInterface is missing on Node {} Network {} exInterfaceName {}", node, network, networkExInterfaceName);
+                    return null;
+                }
+                OvsDBMap<String, String> otherConfigs = networkExInterface.getOther_config();
+                if (otherConfigs != null && otherConfigs.size() != 0 && otherConfigs.get(tunnelEndpointConfigName) != null){
+                    String networkTunnelEndPoint = otherConfigs.get(tunnelEndpointConfigName);
+                    address = InetAddress.getByName(networkTunnelEndPoint);
+                    logger.debug("getTunnelEndPointForNetwork succeed: Node {}, Network {}, exInterface {}, TunnelEndPoint {}", node, network, networkExInterface, networkTunnelEndPoint);
+                    return address;
+                } else {
+                    logger.error("getTunnelEndPointForNetwork failed: otherConfigs is missing Node {}, Network {}, Interface {}", node, network, networkExInterface);
+                    return null;
+                }
+            } else {
+                logger.error("getTunnelEndPointForNetwork failed: There is no interface in Node {}", node);
+                return null;
+            }
+        } catch (Exception e) {
+            logger.error("getTunnelEndPointForNetwork failed: Cannot get TunnelEndPoint for Network {} in Node {}, exception", network, node, e);
+        }
+        return address;
     }
 }

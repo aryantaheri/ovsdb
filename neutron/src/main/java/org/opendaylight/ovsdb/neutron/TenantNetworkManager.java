@@ -381,6 +381,8 @@ public class TenantNetworkManager {
         String networkPatchTun = getPatchToDedicatedTunForNetwork(network);
         String networkPatchInt = getPatchToDedicatedIntForNetwork(network);
 
+        String externalPortName = getExInfNameForNetwork(network);
+
         String networkBrTunUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, networkBrTun);
         String networkBrIntUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, networkBrInt);
 
@@ -417,16 +419,24 @@ public class TenantNetworkManager {
             if (!status.isSuccess())
                 logger.error("Adding patch port failed {}, for brTunUUID {}, networkPatchTunCPU {}, networkPatchCPUTun {}", status.toString(), brTunUUID, networkPatchTunCPU, networkPatchCPUTun);
 
+            status = addExInternalInterfaceToBridge(node, networkBrTunUUID, externalPortName);
+            if (!status.isSuccess())
+                logger.error("Adding external port failed {}, for networkBrTunUUID {}, externalPortName {}", status.toString(), networkBrTunUUID, externalPortName);
+
         } else {
             logger.debug("Dedicated Tunnel Bridge already exists {}", networkBrIntUUID);
         }
+
     }
 
+    public String getExInfNameForNetwork(NeutronNetwork network){
+        return ("ex-"+network.getNetworkName()).substring(0, Math.min(11, 3+network.getNetworkName().length()));
+    }
     /*
      * TODO: Move these to AdminConfigurationManager
      * Linux bridge length is 14, and for OpenStack compatibility we restrict it to 11
      */
-    private String getDedicatedTunBridgeNameForNetwork(NeutronNetwork network){
+    public String getDedicatedTunBridgeNameForNetwork(NeutronNetwork network){
         return ("brtun-"+network.getNetworkUUID()).substring(0, 11);
     }
 
@@ -520,6 +530,7 @@ public class TenantNetworkManager {
               Status status = updatePortBridge(node, brIntUUID, networkIntBrUUID, portUUID, intf);
               if (!status.isSuccess()){
                   logger.error("adjustPortBridgeAttachment: updatePortBridge was not successful {}", status.toString());
+                  return;
               } else{
                   logger.debug("adjustPortBridgeAttachment: updatePortBridge was successful {}", status.toString());
               }
@@ -532,6 +543,17 @@ public class TenantNetworkManager {
 
     }
 
+    /**
+     * Move a port from a bridge (brIntUUID) to another bridge (networkIntBrUUID),
+     *  by deleting from the first one and reinserting to the second one.
+     * @param node
+     * @param brIntUUID
+     * @param networkIntBrUUID
+     * @param portUUID
+     * @param intf
+     * @return Status
+     * @throws Exception
+     */
     private Status updatePortBridge(Node node, String brIntUUID, String networkIntBrUUID, String portUUID, Interface intf) throws Exception {
         logger.debug("updatePortBridge Node {}, NetworkIntBrUUID {}, portUUID {}, Interface {}", node, networkIntBrUUID, portUUID, intf);
         OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
@@ -589,6 +611,69 @@ public class TenantNetworkManager {
         }
         status = ovsdbTable.updateRow(node, Interface.NAME.getName(), newPortUUID, newInterfaceUUID, newInterface);
         return status;
+    }
+
+    private Status addExInternalInterfaceToBridge(Node node, String bridgeUUID, String exPortName) throws Exception{
+        logger.debug("addExInternalInterfaceToBridge: Node {}, Bridge {}, RequestedPortName {}", node, bridgeUUID, exPortName);
+
+        StatusWithUuid statusWithUuid = addPortToBridge(node, bridgeUUID, exPortName);
+        if (!statusWithUuid.isSuccess()){
+            logger.error("addExInternalInterfaceToBridge: Port insert failed for Node {}, Bridge {}, Port {}, Status {}", node, bridgeUUID, exPortName, statusWithUuid.toString());
+            return statusWithUuid;
+        } else {
+            logger.debug("addExInternalInterfaceToBridge: Port insert succeed for Node {}, Bridge {}, Port {}, Status {}", node, bridgeUUID, exPortName, statusWithUuid.toString());
+        }
+        String exPortUUID = statusWithUuid.getUuid().toString();
+        String exInterfaceUUID = getAddedInterfaceUUID(node, exPortUUID);
+        if (exInterfaceUUID == null) {
+            logger.error("addExInternalInterfaceToBridge: exInterfaceUUID is null for exPortUUID {}", exPortUUID);
+            return new Status(StatusCode.INTERNALERROR);
+        }
+        Status status = setInterfaceInternalType(node, exPortUUID, exInterfaceUUID);
+        return status;
+    }
+
+    private Status setInterfaceInternalType(Node node, String portUUID, String interfaceUUID) {
+        logger.debug("setInterfaceInternalType: Node {}, portUUID {}, interfaceUUID {}", node, portUUID, interfaceUUID);
+        OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
+        Interface newInterface = new Interface();
+        newInterface.setType("internal");
+        Status status = ovsdbTable.updateRow(node, Interface.NAME.getName(), portUUID, interfaceUUID, newInterface);
+        return status;
+    }
+
+    private String getAddedInterfaceUUID(Node node, String addedPortUUID) throws Exception {
+        logger.debug("getAddedInterfaceUUID: Node {}, addedPortUUID {}", node, addedPortUUID);
+
+        OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
+        String newInterfaceUUID = null;
+        Port addedPort = null;
+        int timeout = 6;
+        while ((newInterfaceUUID == null) && (timeout > 0)) {
+            addedPort = (Port)ovsdbTable.getRow(node, Port.NAME.getName(), addedPortUUID);
+            OvsDBSet<UUID> interfaces = addedPort.getInterfaces();
+            if (interfaces == null || interfaces.size() == 0) {
+                Thread.sleep(500);
+                timeout--;
+                continue;
+            }
+            newInterfaceUUID = interfaces.toArray()[0].toString();
+        }
+
+        if (newInterfaceUUID == null) {
+            logger.error("getAddedInterfaceUUID: TIMEOUT newInterfaceUUID is null for addedPortUUID {}", addedPortUUID);
+        }
+        return newInterfaceUUID;
+    }
+
+    private StatusWithUuid addPortToBridge(Node node, String bridgeUUID, String portName) {
+        logger.debug("addPortToBridge: Node {}, BridgeUUID {}, exPortName {}", node, bridgeUUID, portName);
+
+        Port port = new Port();
+        port.setName(portName);
+        OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
+        StatusWithUuid statusWithUuid = ovsdbTable.insertRow(node, Port.NAME.getName(), bridgeUUID, port);
+        return statusWithUuid;
     }
 
     private Status attachPortToBridge(Node node, String networkIntBrUUID, String portUUID) throws Exception {

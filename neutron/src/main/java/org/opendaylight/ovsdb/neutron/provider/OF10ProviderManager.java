@@ -16,8 +16,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.commons.net.nntp.NNTP;
 import org.opendaylight.controller.forwardingrulesmanager.FlowConfig;
 import org.opendaylight.controller.forwardingrulesmanager.IForwardingRulesManager;
+import org.opendaylight.controller.networkconfig.neutron.NeutronNetwork;
 import org.opendaylight.controller.sal.action.ActionType;
 import org.opendaylight.controller.sal.core.Node;
 import org.opendaylight.controller.sal.utils.EtherTypes;
@@ -74,6 +76,25 @@ class OF10ProviderManager extends ProviderNetworkManager {
         return new Status(StatusCode.SUCCESS);
     }
 
+    private Status getDedicatedNetworkTunnelReadinessStatus (Node node, NeutronNetwork network, String tunnelKey) {
+        logger.debug("getDedicatedNetworkTunnelReadinessStatus Node {}, Network {}, tunnelKey {}", node, network, tunnelKey);
+        InetAddress tunnelEndPoint = AdminConfigManager.getManager().getDedicatedNetworkTunnelEndPoint(node, network);
+        if (tunnelEndPoint == null) {
+            logger.error("Dedicated Network Tunnel Endpoint not configured for Node {} Network {}", node, network);
+            return new Status(StatusCode.NOTFOUND, "Tunnel Endpoint not configured for Node: "+ node+", Network: "+network);
+        }
+        // Not really important
+        if (!InternalNetworkManager.getManager().isInternalNetworkOverlayReady(node)) {
+            logger.error(node+" is not Overlay ready");
+            return new Status(StatusCode.NOTACCEPTABLE, node+" is not Overlay ready");
+        }
+        if (!TenantNetworkManager.getManager().isTenantNetworkPresentInNode(node, tunnelKey)) {
+            logger.debug(node+" has no VM corresponding to segment "+ tunnelKey);
+            return new Status(StatusCode.NOTACCEPTABLE, node+" has no VM corresponding to segment "+ tunnelKey);
+        }
+        return new Status(StatusCode.SUCCESS);
+
+    }
     /**
      * Program OF1.0 Flow rules on br-tun on the ingress direction from the network towards the br-int.
      * The logic is to simply match on the incoming tunnel OF-Port (which carries the TenantNetwork GRE-Key)
@@ -313,6 +334,25 @@ class OF10ProviderManager extends ProviderNetworkManager {
         return new Status(StatusCode.SUCCESS);
     }
 
+    @Override
+    public Status createDedicatedNetworkTunnels(NeutronNetwork network, String tunnelType, String tunnelKey, Node srcNode, Interface intf) {
+        Status status = getDedicatedNetworkTunnelReadinessStatus(srcNode, network, tunnelKey);
+        if (!status.isSuccess()) return status;
+
+        IConnectionServiceInternal connectionService = (IConnectionServiceInternal)ServiceHelper.getGlobalInstance(IConnectionServiceInternal.class, this);
+        List<Node> nodes = connectionService.getNodes();
+        nodes.remove(srcNode);
+        InetAddress src = AdminConfigManager.getManager().getDedicatedNetworkTunnelEndPoint(srcNode, network);
+
+        for (Node dstNode : nodes) {
+            status = getDedicatedNetworkTunnelReadinessStatus(dstNode, network, tunnelKey);
+            if (!status.isSuccess()) continue;
+
+            InetAddress dst = AdminConfigManager.getManager().getDedicatedNetworkTunnelEndPoint(dstNode, network);
+        }
+        return null;
+    }
+
     private String getTunnelName(String tunnelType, String key, InetAddress dst) {
         return tunnelType+"-"+key+"-"+dst.getHostAddress();
     }
@@ -349,6 +389,17 @@ class OF10ProviderManager extends ProviderNetworkManager {
         return false;
     }
 
+    private Status addDedicatedNetworkTunnelPort (Node node, NeutronNetwork network, String tunnelType, InetAddress src, InetAddress dst, String key){
+        logger.info("addDedicatedNetworkTunnelPort {} {} {} {} {} {}", node, network, tunnelType, src, dst, key);
+        String networkTunBrName = TenantNetworkManager.getManager().getDedicatedTunBridgeNameForNetwork(network);
+        String networkTunBrUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, networkTunBrName);
+        if (networkTunBrUUID == null){
+            logger.error("Could not find Network Tunnel Bridge {} in {}", networkTunBrUUID, node);
+            return new Status(StatusCode.NOTFOUND, "Could not find "+networkTunBrUUID+" in "+node);
+        }
+        String networkTunPortName = getTunnelName(tunnelType, key, dst);
+        
+    }
     private Status addTunnelPort (Node node, String tunnelType, InetAddress src, InetAddress dst, String key) {
         logger.info("addTunnelPort {} {} {} {} {}", node, tunnelType, src, dst, key);
         try {
@@ -449,7 +500,7 @@ class OF10ProviderManager extends ProviderNetworkManager {
     private void initializeFlowRules(Node node, String bridgeName) {
         String brIntId = this.getInternalBridgeUUID(node, bridgeName);
         if (brIntId == null) {
-            logger.error("Failed to initialize Flow Rules for Node: {}, BridgeName: {} is null", node, brIntId);
+            logger.error("Failed to initialize Flow Rules for Node: {}, BridgeName: {} is null", node, bridgeName);
             return;
         }
 

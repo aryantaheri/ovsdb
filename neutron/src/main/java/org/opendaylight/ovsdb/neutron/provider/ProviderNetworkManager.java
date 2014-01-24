@@ -11,6 +11,7 @@ package org.opendaylight.ovsdb.neutron.provider;
 
 import java.util.Map;
 
+import org.opendaylight.controller.networkconfig.neutron.NeutronNetwork;
 import org.opendaylight.controller.sal.core.Node;
 import org.opendaylight.controller.sal.utils.ServiceHelper;
 import org.opendaylight.controller.sal.utils.Status;
@@ -56,6 +57,7 @@ public abstract class ProviderNetworkManager {
     public abstract boolean hasPerTenantTunneling();
     public abstract Status createTunnels(String tunnelType, String tunnelKey);
     public abstract Status createTunnels(String tunnelType, String tunnelKey, Node source, Interface intf);
+    public abstract Status createDedicatedNetworkTunnels(NeutronNetwork network, String tunnelType, String tunnelKey, Node source, Interface intf);
     /*
      * Initialize the Flow rules given the OVSDB node.
      * This method provides a set of common functionalities to initialize the Flow rules of an OVSDB node
