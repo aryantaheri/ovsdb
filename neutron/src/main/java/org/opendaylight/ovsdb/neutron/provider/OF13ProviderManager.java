@@ -20,6 +20,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import org.opendaylight.controller.md.sal.common.api.TransactionStatus;
 import org.opendaylight.controller.md.sal.common.api.data.DataModification;
+import org.opendaylight.controller.networkconfig.neutron.NeutronNetwork;
 import org.opendaylight.controller.sal.binding.api.data.DataBrokerService;
 import org.opendaylight.controller.sal.core.Node;
 import org.opendaylight.controller.sal.utils.HexEncode;
@@ -114,6 +115,13 @@ class OF13ProviderManager extends ProviderNetworkManager {
 
     @Override
     public Status createTunnels(String tunnelType, String tunnelKey) {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
+    @Override
+    public Status createDedicatedNetworkTunnels(NeutronNetwork network,
+            String tunnelType, String tunnelKey, Node source, Interface intf) {
         // TODO Auto-generated method stub
         return null;
     }

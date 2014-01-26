@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.commons.net.nntp.NNTP;
 import org.opendaylight.controller.forwardingrulesmanager.FlowConfig;
 import org.opendaylight.controller.forwardingrulesmanager.IForwardingRulesManager;
 import org.opendaylight.controller.networkconfig.neutron.NeutronNetwork;
@@ -326,7 +325,7 @@ class OF10ProviderManager extends ProviderNetworkManager {
             if (status.isSuccess()) {
                 this.programTunnelRules(tunnelType, tunnelKey, dst, srcNode, intf, true);
             }
-            addTunnelPort(dstNode, tunnelType, dst, src, tunnelKey);
+            status = addTunnelPort(dstNode, tunnelType, dst, src, tunnelKey);
             if (status.isSuccess()) {
                 this.programTunnelRules(tunnelType, tunnelKey, src, dstNode, intf, false);
             }
@@ -349,6 +348,20 @@ class OF10ProviderManager extends ProviderNetworkManager {
             if (!status.isSuccess()) continue;
 
             InetAddress dst = AdminConfigManager.getManager().getDedicatedNetworkTunnelEndPoint(dstNode, network);
+            status = addDedicatedNetworkTunnelPort(srcNode, network, tunnelType, src, dst, tunnelKey);
+            if (status.isSuccess()){
+                logger.debug("createDedicatedNetworkTunnels succeed: add dedicated tunnel port, srcNode {}, network {}, tunnelType {}, src {}, dst {}, tunnelKey {}", srcNode, network, tunnelType, src, dst, tunnelKey);
+                //programDedicatedTunnelRules()
+            } else {
+                logger.error("createDedicatedNetworkTunnels failed {}: add dedicated tunnel port, srcNode {}, network {}, tunnelType {}, src {}, dst {}, tunnelKey {}", status.toString(), srcNode, network, tunnelType, src, dst, tunnelKey);
+            }
+            status = addDedicatedNetworkTunnelPort(dstNode, network, tunnelType, dst, src, tunnelKey);
+            if (status.isSuccess()){
+                logger.debug("createDedicatedNetworkTunnels succeed: add dedicated tunnel port, srcNode {}, network {}, tunnelType {}, src {}, dst {}, tunnelKey {}", dstNode, network, tunnelType, dst, src, tunnelKey);
+                //programDedicatedTunnelRules()
+            } else {
+                logger.error("createDedicatedNetworkTunnels failed {}: add dedicated tunnel port, srcNode {}, network {}, tunnelType {}, src {}, dst {}, tunnelKey {}", status.toString(), dstNode, network, tunnelType, dst, src, tunnelKey);
+            }
         }
         return null;
     }
@@ -393,12 +406,46 @@ class OF10ProviderManager extends ProviderNetworkManager {
         logger.info("addDedicatedNetworkTunnelPort {} {} {} {} {} {}", node, network, tunnelType, src, dst, key);
         String networkTunBrName = TenantNetworkManager.getManager().getDedicatedTunBridgeNameForNetwork(network);
         String networkTunBrUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, networkTunBrName);
+        OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
         if (networkTunBrUUID == null){
-            logger.error("Could not find Network Tunnel Bridge {} in {}", networkTunBrUUID, node);
+            logger.error("addDedicatedNetworkTunnelPort: Could not find Network Tunnel Bridge {} in {}", networkTunBrUUID, node);
             return new Status(StatusCode.NOTFOUND, "Could not find "+networkTunBrUUID+" in "+node);
         }
         String networkTunPortName = getTunnelName(tunnelType, key, dst);
-        
+        try {
+            if(isTunnelPresent(node, networkTunPortName, networkTunBrUUID)){
+                logger.debug("addDedicatedNetworkTunnelPort: Tunnel {} in Bridge {} exists on Node {}", networkTunBrName, networkTunBrUUID, node);
+                return new Status(StatusCode.SUCCESS);
+            }
+            StatusWithUuid statusWithUuid = TenantNetworkManager.getManager().addPortToBridge(node, networkTunBrUUID, networkTunPortName);
+            if (!statusWithUuid.isSuccess()) {
+                logger.error("addDedicatedNetworkTunnelPort: Failed to insert Tunnel port {} in {}", networkTunPortName, networkTunBrUUID);
+                return statusWithUuid;
+            } else {
+                logger.debug("addDedicatedNetworkTunnelPort: Succeed to insert Tunnel port {} in {}", networkTunPortName, networkTunBrUUID);
+            }
+            String tunnelPortUUID = statusWithUuid.getUuid().toString();
+            String interfaceUUID = TenantNetworkManager.getManager().getAddedInterfaceUUID(node, tunnelPortUUID);
+            if (interfaceUUID == null) {
+                logger.error("addDedicatedNetworkTunnelPort: Cannot retrieve Tunnel Interface for port {}/{}", networkTunPortName, tunnelPortUUID);
+                return new Status(StatusCode.INTERNALERROR);
+            }
+
+            Interface tunInterface = new Interface();
+            tunInterface.setType(tunnelType);
+            OvsDBMap<String, String> options = new OvsDBMap<String, String>();
+            options.put("key", key);
+            options.put("local_ip", src.getHostAddress());
+            options.put("remote_ip", dst.getHostAddress());
+            tunInterface.setOptions(options);
+            Status status = ovsdbTable.updateRow(node, Interface.NAME.getName(), tunnelPortUUID, interfaceUUID, tunInterface);
+            logger.debug("Tunnel {} add status : {}", tunInterface, status);
+            return status;
+
+        } catch (Exception e) {
+            logger.error("addDedicatedNetworkTunnelPort Exception", e);
+            return new Status(StatusCode.INTERNALERROR, e.toString());
+        }
     }
     private Status addTunnelPort (Node node, String tunnelType, InetAddress src, InetAddress dst, String key) {
         logger.info("addTunnelPort {} {} {} {} {}", node, tunnelType, src, dst, key);

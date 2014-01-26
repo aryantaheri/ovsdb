@@ -642,7 +642,7 @@ public class TenantNetworkManager {
         return status;
     }
 
-    private String getAddedInterfaceUUID(Node node, String addedPortUUID) throws Exception {
+    public String getAddedInterfaceUUID(Node node, String addedPortUUID) throws Exception {
         logger.debug("getAddedInterfaceUUID: Node {}, addedPortUUID {}", node, addedPortUUID);
 
         OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
@@ -666,7 +666,7 @@ public class TenantNetworkManager {
         return newInterfaceUUID;
     }
 
-    private StatusWithUuid addPortToBridge(Node node, String bridgeUUID, String portName) {
+    public StatusWithUuid addPortToBridge(Node node, String bridgeUUID, String portName) {
         logger.debug("addPortToBridge: Node {}, BridgeUUID {}, exPortName {}", node, bridgeUUID, portName);
 
         Port port = new Port();

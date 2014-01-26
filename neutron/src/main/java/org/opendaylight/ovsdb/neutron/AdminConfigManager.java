@@ -169,10 +169,10 @@ public class AdminConfigManager {
             logger.error("Error populating Tunnel Endpoint for Node {} ", node, e);
         }
     }
-    
+
     public InetAddress getDedicatedNetworkTunnelEndPoint (Node node, NeutronNetwork network){
         logger.debug("getTunnelEndPointForNetwork node {} network {}", node, network);
-        InetAddress address = null;    
+        InetAddress address = null;
         OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
         String networkExInterfaceName = TenantNetworkManager.getManager().getExInfNameForNetwork(network);
         Interface networkExInterface = null;
