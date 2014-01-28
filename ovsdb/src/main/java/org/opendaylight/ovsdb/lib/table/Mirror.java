@@ -20,6 +20,7 @@ public class Mirror  extends Table<Mirror> {
 
     public static final Name<Mirror> NAME = new Name<Mirror>("Mirror") {};
     private String name;
+    private boolean select_all;
     private OvsDBSet<UUID> select_src_port;
     private OvsDBSet<UUID> select_dst_port;
     private OvsDBSet<Integer> select_vlan;
@@ -92,6 +93,14 @@ public class Mirror  extends Table<Mirror> {
         this.external_ids = external_ids;
     }
 
+    public boolean isSelect_all() {
+        return select_all;
+    }
+
+    public void setSelect_all(boolean select_all) {
+        this.select_all = select_all;
+    }
+
     @Override
     @JsonIgnore
     public Name<Mirror> getTableName() {
@@ -106,4 +115,5 @@ public class Mirror  extends Table<Mirror> {
                 + ", output_vlan=" + output_vlan + ", statistics=" + statistics
                 + ", external_ids=" + external_ids + "]";
     }
+
 }

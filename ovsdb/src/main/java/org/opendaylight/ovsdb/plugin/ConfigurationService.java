@@ -1473,6 +1473,107 @@ public class ConfigurationService implements IPluginInBridgeDomainConfigService,
         return new StatusWithUuid(StatusCode.INTERNALERROR);
     }
 
+    private Status addSPANPort(String nodeName, String bridgeName, String spanPort, String mirrorName){
+        Node node = Node.fromString(nodeName);
+        if (node == null){
+            return new Status(StatusCode.NOTFOUND, "Node "+ nodeName+" not found");
+        }
+        Map<String, Table<?>> brTable = inventoryServiceInternal.getTableCache(node, Bridge.NAME.getName());
+        if (brTable == null) {
+            return new StatusWithUuid(StatusCode.NOTFOUND, "Bridge table is null");
+        }
+        String bridgeUUID = null;
+        Bridge bridge;
+        for (String uuid : brTable.keySet()) {
+            bridge = (Bridge) brTable.get(uuid);
+            if (bridge.getName().equalsIgnoreCase(bridgeName)) {
+                bridgeUUID = uuid;
+                break;
+            }
+        }
+        Port port = new Port();
+        port.setName(spanPort);
+        StatusWithUuid statusWithUuid = this.insertPortRow(node, bridgeUUID, port);
+        if (!statusWithUuid.isSuccess()) return statusWithUuid;
+
+        String portUUID = statusWithUuid.getUuid().toString();
+
+        Mirror mirror = new Mirror();
+        mirror.setName(mirrorName);
+        // missing select all column?!
+        mirror.setSelect_all(true);
+        OvsDBSet<UUID> outPorts = new OvsDBSet<>();
+        outPorts.add(new UUID(portUUID));
+        mirror.setOutput_port(outPorts);
+
+        this.insertMirrorRow(node, bridgeUUID, mirror);
+
+        String newInterfaceUUID = null;
+        int timeout = 6;
+
+        Map<String, Table<?>> portTable;
+        portTable = inventoryServiceInternal.getTableCache(node, Port.NAME.getName());
+        if (portTable == null ||  portTable.get(portUUID) == null) {
+            return new StatusWithUuid(StatusCode.NOTFOUND, "Port with UUID "+portUUID+" Not found");
+        }
+        while ((newInterfaceUUID == null) && (timeout > 0)) {
+            Port addedPort = (Port) portTable.get(portUUID);
+            OvsDBSet<UUID> interfaces = addedPort.getInterfaces();
+            if (interfaces == null || interfaces.size() == 0) {
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    return new StatusWithUuid(StatusCode.INTERNALERROR, e.toString());
+                }
+                timeout--;
+                continue;
+            }
+            newInterfaceUUID = interfaces.toArray()[0].toString();
+        }
+
+        if (newInterfaceUUID == null) {
+            return new StatusWithUuid(StatusCode.NOTFOUND,"TIMEOUT newInterfaceUUID is null for addedPortUUID "+ portUUID);
+        }
+        Interface intf = new Interface();
+        intf.setType("internal");
+        Status status = this.updateRow(node, Interface.NAME.getName(), portUUID, newInterfaceUUID, intf);
+
+        return status;
+    }
+
+    public void _addSPANPort(CommandInterpreter ci){
+        String nodeName = ci.nextArgument();
+        if (nodeName == null) {
+            ci.println("Please enter Node Name");
+            return;
+        }
+
+        String bridgeName = ci.nextArgument();
+        if (bridgeName == null) {
+            ci.println("Please enter Bridge Name");
+            return;
+        }
+
+        String portName = ci.nextArgument();
+        if (portName == null) {
+            ci.println("Please enter SPAN Port Name");
+            return;
+        }
+
+        String mirrorName = ci.nextArgument();
+        if (mirrorName == null) {
+            ci.println("Please enter Mirror Name");
+            return;
+        }
+        // Add port, set type=internal,
+        // Add mirror
+        // update bridge mirror
+
+        Status status = this.addSPANPort(nodeName, bridgeName, portName, mirrorName);
+        ci.println("SPANPort creation status : "+status.toString());
+    }
+
+
 
     private Status deleteBridgeRow(Node node, String uuid) {
         // Set up variables for generic _deleteTableRow()
@@ -2047,6 +2148,7 @@ public class ConfigurationService implements IPluginInBridgeDomainConfigService,
         help.append("\t deletePort <Node> <BridgeName> <PortName>                                       - Delete Port\n");
         help.append("\t addPortVlan <Node> <BridgeName> <PortName> <vlan>                               - Add Port, Vlan\n");
         help.append("\t addTunnel <Node> <Bridge> <Port> <tunnel-type> <remote-ip> <options pairs>      - Add Tunnel\n");
+        help.append("\t addSPANPort <Node> <Bridge> <PortName> <MirrorName>                             - Add SPANPort\n");
         help.append("\t printCache <Node>                                                               - Prints Table Cache");
         return help.toString();
     }
