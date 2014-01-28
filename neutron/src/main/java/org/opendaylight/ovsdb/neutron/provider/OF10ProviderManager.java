@@ -91,6 +91,7 @@ class OF10ProviderManager extends ProviderNetworkManager {
             logger.debug(node+" has no VM corresponding to segment "+ tunnelKey);
             return new Status(StatusCode.NOTACCEPTABLE, node+" has no VM corresponding to segment "+ tunnelKey);
         }
+        logger.debug("getDedicatedNetworkTunnelReadinessStatus True: Node {} Network {} tunnelKey {}", node, network.getNetworkName(), tunnelKey);
         return new Status(StatusCode.SUCCESS);
 
     }
@@ -346,8 +347,11 @@ class OF10ProviderManager extends ProviderNetworkManager {
         for (Node dstNode : nodes) {
             status = getDedicatedNetworkTunnelReadinessStatus(dstNode, network, tunnelKey);
             if (!status.isSuccess()) continue;
+            logger.debug("createDedicatedNetworkTunnels: creating tunnels between {} and {} for network {} with tunnelKey {}", srcNode,dstNode, network.getNetworkName(), tunnelKey);
 
             InetAddress dst = AdminConfigManager.getManager().getDedicatedNetworkTunnelEndPoint(dstNode, network);
+            logger.debug("createDedicatedNetworkTunnels: Tunnel endpoints are {} and {}", src, dst);
+
             status = addDedicatedNetworkTunnelPort(srcNode, network, tunnelType, src, dst, tunnelKey);
             if (status.isSuccess()){
                 logger.debug("createDedicatedNetworkTunnels succeed: add dedicated tunnel port, srcNode {}, network {}, tunnelType {}, src {}, dst {}, tunnelKey {}", srcNode, network, tunnelType, src, dst, tunnelKey);
@@ -403,7 +407,7 @@ class OF10ProviderManager extends ProviderNetworkManager {
     }
 
     private Status addDedicatedNetworkTunnelPort (Node node, NeutronNetwork network, String tunnelType, InetAddress src, InetAddress dst, String key){
-        logger.info("addDedicatedNetworkTunnelPort {} {} {} {} {} {}", node, network, tunnelType, src, dst, key);
+        logger.debug("addDedicatedNetworkTunnelPort {} {} {} {} {} {}", node, network, tunnelType, src, dst, key);
         String networkTunBrName = TenantNetworkManager.getManager().getDedicatedTunBridgeNameForNetwork(network);
         String networkTunBrUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, networkTunBrName);
         OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);

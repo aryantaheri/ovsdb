@@ -87,6 +87,7 @@ public class SouthboundHandler extends BaseHandler implements OVSDBInventoryList
     @Override
     public void nodeAdded(Node node) {
         this.enqueueEvent(new SouthboundEvent(node, SouthboundEvent.Action.ADD));
+        logger.debug("nodeAdded: Node {}", node);
     }
 
     @Override
@@ -151,7 +152,7 @@ public class SouthboundHandler extends BaseHandler implements OVSDBInventoryList
 
     public void processNodeUpdate(Node node, SouthboundEvent.Action action) {
         if (action == SouthboundEvent.Action.DELETE) return;
-        logger.trace("Process Node added {}", node);
+        logger.debug("Process Node added {}", node);
         InternalNetworkManager.getManager().prepareInternalNetwork(node);
     }
 

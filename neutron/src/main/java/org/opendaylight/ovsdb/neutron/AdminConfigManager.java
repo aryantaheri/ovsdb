@@ -206,7 +206,7 @@ public class AdminConfigManager {
             }
         } catch (Exception e) {
             logger.error("getTunnelEndPointForNetwork failed: Cannot get TunnelEndPoint for Network {} in Node {}, exception", network, node, e);
+            return null;
         }
-        return address;
     }
 }

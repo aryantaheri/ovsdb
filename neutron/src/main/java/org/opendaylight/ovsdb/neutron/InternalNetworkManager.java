@@ -105,6 +105,7 @@ public class InternalNetworkManager {
                     type: internal
      */
     public void createInternalNetworkForOverlay(Node node) throws Exception {
+        logger.debug("createInternalNetworkForOverlay: Node {}", node);
         String brTun = AdminConfigManager.getManager().getTunnelBridgeName();
         String brInt = AdminConfigManager.getManager().getIntegrationBridgeName();
         String patchInt = AdminConfigManager.getManager().getPatchToIntegration();
@@ -112,9 +113,12 @@ public class InternalNetworkManager {
 
         Status status = this.addInternalBridge(node, brInt, patchTun, patchInt);
         if (!status.isSuccess()) logger.debug("Integration Bridge Creation Status : "+status.toString());
+        logger.debug("createInternalNetworkForOverlay: addInternalBridge Stauts {} Node {} brInt {} patchTun {} patchInt {}", status.toString(), node, brInt, patchTun, patchInt);
+        logger.debug("createInternalNetworkForOverlay: hasPerTenantTunneling {}", ProviderNetworkManager.getManager().hasPerTenantTunneling());
         if (ProviderNetworkManager.getManager().hasPerTenantTunneling()) {
             status = this.addInternalBridge(node, brTun, patchInt, patchTun);
             if (!status.isSuccess()) logger.debug("Tunnel Bridge Creation Status : "+status.toString());
+            logger.debug("createInternalNetworkForOverlay: addInternalBridge Stauts {} Node {} brTun {}, patchInt {}, patchTun {}", status.toString(), node, brTun, patchInt, patchTun);
         }
     }
 
@@ -136,6 +140,7 @@ public class InternalNetworkManager {
 
 
     public Status addInternalBridge (Node node, String bridgeName, String localPathName, String remotePatchName) throws Exception {
+        logger.debug("addInternalBridge: Node {} BridgeName {} LocalPatchName {} RemotePatchName {}", node, bridgeName, localPathName, remotePatchName);
         OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
 
         String bridgeUUID = this.getInternalBridgeUUID(node, bridgeName);
