@@ -191,7 +191,7 @@ public class ConnectionService implements IPluginInConnectionService, IConnectio
                     if (handlers == null) {
                         channel.pipeline().addLast(
                                 //new LoggingHandler(LogLevel.INFO),
-                                new JsonRpcDecoder(100000),
+                                new JsonRpcDecoder(10000000),
                                 new StringEncoder(CharsetUtil.UTF_8));
                     } else {
                         for (ChannelHandler handler : handlers) {
@@ -364,7 +364,7 @@ public class ConnectionService implements IPluginInConnectionService, IConnectio
                      String identifier = address.getHostAddress()+":"+port;
                      channel.pipeline().addLast(
                              new LoggingHandler(LogLevel.INFO),
-                             new JsonRpcDecoder(100000),
+                             new JsonRpcDecoder(10000000),
                              new StringEncoder(CharsetUtil.UTF_8));
 
                      Node node = handleNewConnection(identifier, channel, ConnectionService.this);
