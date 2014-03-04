@@ -132,6 +132,44 @@ class OF10ProviderManager extends ProviderNetworkManager {
     }
 
     /**
+     * Program OF1.0 Flow rules on brtun-xy on the ingress direction from the network towards the brint-xy.
+     * The logic is to simply match on the incoming tunnel OF-Port (which carries the TenantNetwork GRE-Key)
+     * and rewrite the Corresponding internal Vlan and pass it on to brint-xy via the patch port.
+     */
+    private void programLocalIngressDedicatedTunnelBridgeRules(Node node, int networkTunnelOFPort, int internalVlan, int networkPatchPort, String networkUUID) {
+        String networkBrTunName = TenantNetworkManager.getManager().getDedicatedTunBridgeNameForNetwork(networkUUID);
+        String networkBrTunUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, networkBrTunName);
+        if (networkBrTunUUID == null) {
+            logger.error("Failed to initialize LocalIngressDedicatedTunnelBridge Flow Rules for {}", node);
+            return;
+        }
+        try {
+            OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
+            Bridge bridge = (Bridge) ovsdbTable.getRow(node, Bridge.NAME.getName(), networkBrTunUUID);
+            Set<String> dpids = bridge.getDatapath_id();
+            if (dpids == null || dpids.size() ==  0) return;
+            Long dpidLong = Long.valueOf(HexEncode.stringToLong((String)dpids.toArray()[0]));
+            Node ofNode = new Node(Node.NodeIDType.OPENFLOW, dpidLong);
+            String flowName = "TepMatch"+networkTunnelOFPort+""+internalVlan;
+            FlowConfig flow = new FlowConfig();
+            flow.setName(flowName);
+            flow.setNode(ofNode);
+            flow.setInstallInHw(true);
+            flow.setPriority(INGRESS_TUNNEL_FLOW_PRIORITY+"");
+            flow.setIngressPort(networkTunnelOFPort+"");
+            List<String> actions = new ArrayList<String>();
+            actions.add(ActionType.SET_VLAN_ID+"="+internalVlan);
+            actions.add(ActionType.OUTPUT.toString()+"="+networkPatchPort);
+            flow.setActions(actions);
+            Status status = this.addStaticFlow(ofNode, flow);
+            logger.debug("Dedicated Local Ingress Flow Programming Status {} for Flow {} on {} / {}", status, flow, ofNode, node);
+        } catch (Exception e) {
+            logger.error("Failed to initialize LocalIngressDedicatedTunnelBridge Flow Rules for {}", node, e);
+        }
+
+    }
+
+    /**
      * Program OF1.0 Flow rules on br-tun on the remote Node on its egress direction towards the overlay network
      * for a VM (with the attachedMac).
      * The logic is to simply match on the incoming vlan, mac from the patch-port connected to br-int (patch-int)
@@ -171,6 +209,49 @@ class OF10ProviderManager extends ProviderNetworkManager {
             logger.error("Failed to initialize RemoteEgressTunnelBridge Flow Rules for {}", node, e);
         }
     }
+
+    /**
+     * Program OF1.0 Flow rules on brtun-xy on the remote Node on its egress direction towards the overlay network
+     * for a VM (with the attachedMac).
+     * The logic is to simply match on the incoming vlan, mac from the patch-port connected to brint-xy (p-int-xy)
+     * and output the traffic to the appropriate GRE Tunnel (which carries the GRE-Key for that Tenant Network).
+     * Also perform the Strip-Vlan action.
+     */
+    private void programRemoteEgressDedicatedTunnelBridgeRules(Node node, int networkPatchPort, String attachedMac, int internalVlan, int networkTunnelOFPort, String networkUUID) {
+        String networkBrTunName = TenantNetworkManager.getManager().getDedicatedTunBridgeNameForNetwork(networkUUID);
+        String networkBrTunUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, networkBrTunName);
+
+        if (networkBrTunUUID == null) {
+            logger.error("Failed to initialize RemoteEgressDedicatedTunnelBridge Flow Rules for {}", node);
+            return;
+        }
+        try {
+            OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
+            Bridge bridge = (Bridge) ovsdbTable.getRow(node, Bridge.NAME.getName(), networkBrTunUUID);
+            Set<String> dpids = bridge.getDatapath_id();
+            if (dpids == null || dpids.size() ==  0) return;
+            Long dpidLong = Long.valueOf(HexEncode.stringToLong((String)dpids.toArray()[0]));
+            Node ofNode = new Node(Node.NodeIDType.OPENFLOW, dpidLong);
+            String flowName = "TepMatch"+networkTunnelOFPort+""+internalVlan+""+HexEncode.stringToLong(attachedMac);
+            FlowConfig flow = new FlowConfig();
+            flow.setName(flowName);
+            flow.setNode(ofNode);
+            flow.setInstallInHw(true);
+            flow.setPriority(EGRESS_TUNNEL_FLOW_PRIORITY+"");
+            flow.setDstMac(attachedMac);
+            flow.setIngressPort(networkPatchPort+"");
+            flow.setVlanId(internalVlan+"");
+            List<String> actions = new ArrayList<String>();
+            actions.add(ActionType.POP_VLAN.toString());
+            actions.add(ActionType.OUTPUT.toString()+"="+networkTunnelOFPort);
+            flow.setActions(actions);
+            Status status = this.addStaticFlow(ofNode, flow);
+            logger.debug("Remote Egress Flow Programming Status {} for Flow {} on {} / {}", status, flow, ofNode, node);
+        } catch (Exception e) {
+            logger.error("Failed to initialize RemoteEgressTunnelBridge Flow Rules for {}", node, e);
+        }
+    }
+
 
     /**
      * Program OF1.0 Flow rules to flood the broadcast & unknown-unicast traffic over br-tun on the egress direction
@@ -232,6 +313,70 @@ class OF10ProviderManager extends ProviderNetworkManager {
             logger.error("Failed to initialize FloodEgressTunnelBridge Flow Rules for {}", node, e);
         }
     }
+
+    /**
+     * Program OF1.0 Flow rules to flood the broadcast & unknown-unicast traffic over brtun-xy on the egress direction
+     * towards the network on all the overlay tunnels that corresponds to the tenant network.
+     * The logic is to simply match on the incoming vlan, mac from the patch-port connected to brint-xy (p-int-xy)
+     * and output the traffic to all the GRE-Tunnels for this Tenant Network (which carries the GRE-Key).
+     * Also perform the Strip-Vlan action.
+     */
+    private void programFloodEgressDedicatedTunnelBridgeRules(Node node, int networkPatchPort, int internalVlan, int networkTunnelOFPort, String networkUUID) {
+        String networkBrTunName = TenantNetworkManager.getManager().getDedicatedTunBridgeNameForNetwork(networkUUID);
+        String networkBrTunUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, networkBrTunName);
+
+        if (networkBrTunUUID == null) {
+            logger.error("Failed to initialize FloodEgressDedicatedTunnelBridge Flow Rules for {}", node);
+            return;
+        }
+        try {
+            OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
+            Bridge bridge = (Bridge) ovsdbTable.getRow(node, Bridge.NAME.getName(), networkBrTunUUID);
+            Set<String> dpids = bridge.getDatapath_id();
+            if (dpids == null || dpids.size() ==  0) return;
+            Long dpidLong = Long.valueOf(HexEncode.stringToLong((String)dpids.toArray()[0]));
+            Node ofNode = new Node(Node.NodeIDType.OPENFLOW, dpidLong);
+            String flowName = "TepFlood"+internalVlan;
+            IForwardingRulesManager frm = (IForwardingRulesManager) ServiceHelper.getInstance(
+                    IForwardingRulesManager.class, "default", this);
+            FlowConfig existingFlowConfig = frm.getStaticFlow(flowName, ofNode);
+            FlowConfig flow = existingFlowConfig;
+            Status status = null;
+            if (flow == null) {
+                flow = new FlowConfig();
+                flow.setName(flowName);
+                flow.setNode(ofNode);
+                flow.setPriority(FLOOD_TUNNEL_FLOW_PRIORITY+"");
+                flow.setIngressPort(networkPatchPort+"");
+                flow.setVlanId(internalVlan+"");
+                List<String> actions = new ArrayList<String>();
+                actions.add(ActionType.POP_VLAN.toString());
+                actions.add(ActionType.OUTPUT.toString()+"="+networkTunnelOFPort);
+                flow.setActions(actions);
+                status = frm.addStaticFlow(flow);
+                logger.debug("Add Dedicated Flood Egress Flow Programming Status {} for Flow {} on {} / {}",
+                              status, flow, ofNode, node);
+            } else {
+                flow = new FlowConfig(existingFlowConfig);
+                List<String> actions = flow.getActions();
+                String outputPort = ActionType.OUTPUT.toString()+"="+networkTunnelOFPort;
+                if (actions != null && !actions.contains(outputPort)) {
+                    actions.add(outputPort);
+                    flow.setActions(actions);
+                } else {
+                    logger.debug("Dedicated Flood Egress Flow already exists. Skipping modify for Flow {} on {} / {}",
+                                 flow, ofNode, node);
+                    return;
+                }
+                status = frm.modifyStaticFlow(flow);
+                logger.debug("Modify Dedicated Flood Egress Flow Programming Status {} for Flow {} on {} / {}",
+                              status, flow, ofNode, node);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to initialize FloodEgressDedicatedTunnelBridge Flow Rules for {}", node, e);
+        }
+    }
+
 
     private void programTunnelRules (String tunnelType, String segmentationId, InetAddress dst, Node node,
                                      Interface intf, boolean local) {
@@ -309,6 +454,85 @@ class OF10ProviderManager extends ProviderNetworkManager {
         }
     }
 
+    private void programDedicatedTunnelRules(String tunnelType, String segmentationId, InetAddress dst, Node node, Interface intf, boolean local) {
+        logger.debug("programDedicatedTunnelRules tunnelType {}, segmentationId {}, dst {}, node {}, intf {}, local {}", tunnelType, segmentationId, dst, node, intf, local);
+        String networkId = TenantNetworkManager.getManager().getNetworkIdForSegmentationId(segmentationId);
+        if (networkId == null) {
+            logger.debug("Tenant Network not found with Segmenation-id {}",segmentationId);
+            return;
+        }
+        int internalVlan = TenantNetworkManager.getManager().getInternalVlan(networkId);
+        if (internalVlan == 0) {
+            logger.debug("No InternalVlan provisioned for Tenant Network {}",networkId);
+            return;
+        }
+        Map<String, String> externalIds = intf.getExternal_ids();
+        if (externalIds == null) {
+            logger.error("No external_ids seen in {}", intf);
+            return;
+        }
+
+        String attachedMac = externalIds.get(TenantNetworkManager.EXTERNAL_ID_VM_MAC);
+        if (attachedMac == null) {
+            logger.error("No AttachedMac seen in {}", intf);
+            return;
+        }
+//        String patchInt = AdminConfigManager.getManager().getPatchToIntegration();
+        String networkPatchInt = TenantNetworkManager.getManager().getPatchToDedicatedIntForNetwork(networkId);
+
+        int networkPatchOFPort = -1;
+        try {
+            OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
+            Map<String, Table<?>> intfs = ovsdbTable.getRows(node, Interface.NAME.getName());
+            if (intfs != null) {
+                for (Table<?> row : intfs.values()) {
+                    Interface networkPatchIntf = (Interface)row;
+                    if (networkPatchIntf.getName().equalsIgnoreCase(networkPatchInt)) {
+                        Set<BigInteger> of_ports = networkPatchIntf.getOfport();
+                        if (of_ports == null || of_ports.size() <= 0) {
+                            logger.error("Could NOT Identified Patch port {} on {}", networkPatchInt, node);
+                            continue;
+                        }
+                        networkPatchOFPort = Long.valueOf(((BigInteger)of_ports.toArray()[0]).longValue()).intValue();
+                        logger.debug("Identified Patch port {} -> OF ({}) on {}", networkPatchInt, networkPatchOFPort, node);
+                        break;
+                    }
+                }
+                if (networkPatchOFPort == -1) {
+                    logger.error("Cannot identify {} interface on {}", networkPatchInt, node);
+                }
+                for (Table<?> row : intfs.values()) {
+                    Interface networkTunIntf = (Interface)row;
+                    if (networkTunIntf.getName().equals(this.getTunnelName(tunnelType, segmentationId, dst))) {
+                        Set<BigInteger> of_ports = networkTunIntf.getOfport();
+                        if (of_ports == null || of_ports.size() <= 0) {
+                            logger.error("Could NOT Identify Tunnel port {} on {}", networkTunIntf.getName(), node);
+                            continue;
+                        }
+                        int networkTunnelOFPort = Long.valueOf(((BigInteger)of_ports.toArray()[0]).longValue()).intValue();
+
+                        if (networkTunnelOFPort == -1) {
+                            logger.error("Could NOT Identify Tunnel port {} -> OF ({}) on {}", networkTunIntf.getName(), networkTunnelOFPort, node);
+                            return;
+                        }
+                        logger.debug("Identified Tunnel port {} -> OF ({}) on {}", networkTunIntf.getName(), networkTunnelOFPort, node);
+
+                        if (!local) {
+                            programRemoteEgressDedicatedTunnelBridgeRules(node, networkPatchOFPort, attachedMac, internalVlan, networkTunnelOFPort, networkId);
+                        }
+                        programLocalIngressDedicatedTunnelBridgeRules(node, networkTunnelOFPort, internalVlan, networkPatchOFPort, networkId);
+                        programFloodEgressDedicatedTunnelBridgeRules(node, networkPatchOFPort, internalVlan, networkTunnelOFPort, networkId);
+                        return;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.error("", e);
+        }
+
+    }
+
+
     @Override
     public Status createTunnels(String tunnelType, String tunnelKey, Node srcNode, Interface intf) {
         Status status = getTunnelReadinessStatus(srcNode, tunnelKey);
@@ -355,14 +579,14 @@ class OF10ProviderManager extends ProviderNetworkManager {
             status = addDedicatedNetworkTunnelPort(srcNode, network, tunnelType, src, dst, tunnelKey);
             if (status.isSuccess()){
                 logger.debug("createDedicatedNetworkTunnels succeed: add dedicated tunnel port, srcNode {}, network {}, tunnelType {}, src {}, dst {}, tunnelKey {}", srcNode, network, tunnelType, src, dst, tunnelKey);
-                //programDedicatedTunnelRules()
+                programDedicatedTunnelRules(tunnelType, tunnelKey, dst, srcNode, intf, true);
             } else {
                 logger.error("createDedicatedNetworkTunnels failed {}: add dedicated tunnel port, srcNode {}, network {}, tunnelType {}, src {}, dst {}, tunnelKey {}", status.toString(), srcNode, network, tunnelType, src, dst, tunnelKey);
             }
             status = addDedicatedNetworkTunnelPort(dstNode, network, tunnelType, dst, src, tunnelKey);
             if (status.isSuccess()){
                 logger.debug("createDedicatedNetworkTunnels succeed: add dedicated tunnel port, srcNode {}, network {}, tunnelType {}, src {}, dst {}, tunnelKey {}", dstNode, network, tunnelType, dst, src, tunnelKey);
-                //programDedicatedTunnelRules()
+                programDedicatedTunnelRules(tunnelType, tunnelKey, src, dstNode, intf, false);
             } else {
                 logger.error("createDedicatedNetworkTunnels failed {}: add dedicated tunnel port, srcNode {}, network {}, tunnelType {}, src {}, dst {}, tunnelKey {}", status.toString(), dstNode, network, tunnelType, dst, src, tunnelKey);
             }

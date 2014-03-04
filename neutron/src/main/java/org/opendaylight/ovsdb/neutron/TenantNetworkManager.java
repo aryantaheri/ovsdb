@@ -411,17 +411,24 @@ public class TenantNetworkManager {
             String networkPatchTunCPU = getPatchToDedicatedTunFromCPUForNetwork(network);
             String networkPatchCPUTun = getPatchToCPUFromDedicatedTunForNetwork(network);
 
-            status = InternalNetworkManager.getManager().addPatchPort(node, networkBrTunUUID, networkPatchCPUTun, networkPatchTunCPU);
-            if (!status.isSuccess())
-                logger.error("Adding patch port failed {}, for networkBrTunUUID {}, networkPatchCPUTun {}, networkPatchTunCPU {}", status.toString(), networkBrTunUUID, networkPatchCPUTun, networkPatchTunCPU);
+//            status = InternalNetworkManager.getManager().addPatchPort(node, networkBrTunUUID, networkPatchCPUTun, networkPatchTunCPU);
+//            if (!status.isSuccess())
+//                logger.error("Adding patch port failed {}, for networkBrTunUUID {}, networkPatchCPUTun {}, networkPatchTunCPU {}", status.toString(), networkBrTunUUID, networkPatchCPUTun, networkPatchTunCPU);
+//
+//            status = InternalNetworkManager.getManager().addPatchPort(node, brTunUUID, networkPatchTunCPU, networkPatchCPUTun);
+//            if (!status.isSuccess())
+//                logger.error("Adding patch port failed {}, for brTunUUID {}, networkPatchTunCPU {}, networkPatchCPUTun {}", status.toString(), brTunUUID, networkPatchTunCPU, networkPatchCPUTun);
 
-            status = InternalNetworkManager.getManager().addPatchPort(node, brTunUUID, networkPatchTunCPU, networkPatchCPUTun);
-            if (!status.isSuccess())
-                logger.error("Adding patch port failed {}, for brTunUUID {}, networkPatchTunCPU {}, networkPatchCPUTun {}", status.toString(), brTunUUID, networkPatchTunCPU, networkPatchCPUTun);
+            // adding external interface to dedicated tenant tunnel bridge (THIS WILL MAKE LOOP)
+//            status = addExInternalInterfaceToBridge(node, networkBrTunUUID, externalPortName);
+//            if (!status.isSuccess())
+//                logger.error("Adding external port failed {}, for networkBrTunUUID {}, externalPortName {}", status.toString(), networkBrTunUUID, externalPortName);
 
-            status = addExInternalInterfaceToBridge(node, networkBrTunUUID, externalPortName);
+            // adding external interface to br-tun to avoid loop
+            status = addExInternalInterfaceToBridge(node, brTunUUID, externalPortName);
             if (!status.isSuccess())
-                logger.error("Adding external port failed {}, for networkBrTunUUID {}, externalPortName {}", status.toString(), networkBrTunUUID, externalPortName);
+                logger.error("Adding external port failed {}, for brTunUUID {}, externalPortName {}", status.toString(), brTunUUID, externalPortName);
+
 
         } else {
             logger.debug("Dedicated Tunnel Bridge already exists {}", networkBrIntUUID);
@@ -440,6 +447,10 @@ public class TenantNetworkManager {
         return ("brtun-"+network.getNetworkUUID()).substring(0, 11);
     }
 
+    public String getDedicatedTunBridgeNameForNetwork(String networkUUID){
+        return ("brtun-"+networkUUID).substring(0, 11);
+    }
+
     /*
      * TODO: Move these to AdminConfigurationManager
      * Linux bridge length is 14, and for OpenStack compatibility we restrict it to 11
@@ -450,6 +461,10 @@ public class TenantNetworkManager {
 
     private String getPatchToDedicatedIntForNetwork(NeutronNetwork network){
         return ("p-int-"+network.getNetworkUUID()).substring(0, 11);
+    }
+
+    public String getPatchToDedicatedIntForNetwork(String networkUUID){
+        return ("p-int-"+networkUUID).substring(0, 11);
     }
 
     private String getPatchToDedicatedTunForNetwork(NeutronNetwork network){
