@@ -56,6 +56,7 @@ import org.opendaylight.ovsdb.lib.message.MonitorRequestBuilder;
 import org.opendaylight.ovsdb.lib.message.OvsdbRPC;
 import org.opendaylight.ovsdb.lib.message.TableUpdates;
 import org.opendaylight.ovsdb.lib.message.UpdateNotification;
+import org.opendaylight.ovsdb.lib.notation.OvsDBSet;
 import org.opendaylight.ovsdb.lib.table.Bridge;
 import org.opendaylight.ovsdb.lib.table.Controller;
 import org.opendaylight.ovsdb.lib.table.Open_vSwitch;
@@ -80,6 +81,8 @@ public class ConnectionService implements IPluginInConnectionService, IConnectio
     // Properties that can be set in config.ini
     private static final String OVSDB_LISTENPORT = "ovsdb.listenPort";
     private static final String OVSDB_AUTOCONFIGURECONTROLLER = "ovsdb.autoconfigurecontroller";
+    protected static final String OPENFLOW_10 = "1.0";
+    protected static final String OPENFLOW_13 = "1.3";
 
     private static final Integer defaultOvsdbPort = 6640;
     private static final boolean defaultAutoConfigureController = true;
@@ -291,6 +294,7 @@ public class ConnectionService implements IPluginInConnectionService, IConnectio
 
     public void channelClosed(Node node) throws Exception {
         logger.info("Connection to Node : {} closed", node);
+        disconnect(node);
         inventoryServiceInternal.removeNode(node);
     }
 
@@ -315,7 +319,7 @@ public class ConnectionService implements IPluginInConnectionService, IConnectio
             if (databaseSchema.getTables().keySet().contains(table.getTableName().getName())) {
                 monitorReq.monitor(table);
             } else {
-                logger.warn("We know about table {} but it is not in the schema of {}", table.getTableName().getName(), connection.getNode().getNodeIDString());
+                logger.debug("We know about table {} but it is not in the schema of {}", table.getTableName().getName(), connection.getNode().getNodeIDString());
             }
         }
 
@@ -478,17 +482,33 @@ public class ConnectionService implements IPluginInConnectionService, IConnectio
             return false;
         }
 
-        if (connection != null) {
-            List<InetAddress> ofControllerAddrs = this.getControllerIPAddresses(connection);
-            short ofControllerPort = getControllerOFPort();
-            for (InetAddress ofControllerAddress : ofControllerAddrs) {
-                String newController = "tcp:"+ofControllerAddress.getHostAddress()+":"+ofControllerPort;
-                Controller controllerRow = new Controller();
-                controllerRow.setTarget(newController);
-                OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
-                if (ovsdbTable != null) {
-                    ovsdbTable.insertRow(node, Controller.NAME.getName(), bridgeUUID, controllerRow);
-                }
+        OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
+        OvsDBSet<String> protocols = new OvsDBSet<String>();
+
+        String ofVersion = System.getProperty("ovsdb.of.version", OPENFLOW_10);
+        switch (ofVersion) {
+            case OPENFLOW_13:
+                protocols.add("OpenFlow13");
+                break;
+            case OPENFLOW_10:
+            default:
+                protocols.add("OpenFlow10");
+                break;
+        }
+
+        Bridge bridge = new Bridge();
+        bridge.setProtocols(protocols);
+        Status status = ovsdbTable.updateRow(node, Bridge.NAME.getName(), null, bridgeUUID, bridge);
+        logger.debug("Bridge {} updated to {} with Status {}", bridgeUUID, protocols.toArray()[0], status);
+
+        List<InetAddress> ofControllerAddrs = this.getControllerIPAddresses(connection);
+        short ofControllerPort = getControllerOFPort();
+        for (InetAddress ofControllerAddress : ofControllerAddrs) {
+            String newController = "tcp:"+ofControllerAddress.getHostAddress()+":"+ofControllerPort;
+            Controller controllerRow = new Controller();
+            controllerRow.setTarget(newController);
+            if (ovsdbTable != null) {
+                ovsdbTable.insertRow(node, Controller.NAME.getName(), bridgeUUID, controllerRow);
             }
         }
         return true;

@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <prerequisites>
     <maven>3.0</maven>
@@ -8,11 +7,11 @@
   <parent>
     <groupId>org.opendaylight.controller</groupId>
     <artifactId>commons.opendaylight</artifactId>
-    <version>1.4.1-SNAPSHOT</version>
+    <version>1.4.1</version>
   </parent>
   <groupId>org.opendaylight.ovsdb</groupId>
   <artifactId>commons.ovsdb</artifactId>
-  <version>1.0.0-SNAPSHOT</version>
+  <version>1.0.1-SNAPSHOT</version>
   <packaging>pom</packaging>
   <url>https://wiki.opendaylight.org/view/OVSDB_Integration:Main</url>
   <scm>
@@ -45,19 +44,15 @@
     </pluginManagement>
   </build>
 
-  <!-- modules should go once the jenkins job is updated to use the root pom -->
-  <modules>
-    <module>../../ovsdb/</module>
-    <module>../../northbound/ovsdb</module>
-    <module>../../neutron</module>
-    <module>../../distribution/opendaylight</module>
-  </modules>
   <repositories>
-    <!-- jsonrpc4j mirror -->
+    <!-- Opendaylight public group -->
     <repository>
-      <id>jsonrpc4j-webdav-maven-repo</id>
-      <name>jsonrpc4j maven repository</name>
-      <url>http://nexus.opendaylight.org/content/repositories/jsonrpc4j-webdav-maven-repo/</url>
+      <id>opendaylight-public</id>
+      <name>opendaylight-public</name>
+      <url>${nexusproxy}/groups/public/</url>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
     </repository>
     <!-- OpenDayLight Released artifact -->
     <repository>
@@ -75,9 +70,17 @@
 
   <pluginRepositories>
     <pluginRepository>
-      <id>central2</id>
+      <id>opendaylight-public</id>
+      <name>opendaylight-public</name>
+      <url>http://nexus.opendaylight.org/content/groups/public/</url>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </pluginRepository>
+    <pluginRepository>
+      <id>opendaylight-release</id>
       <name>central2</name>
-      <url>http://nexus.opendaylight.org/content/repositories/central2/</url>
+      <url>http://nexus.opendaylight.org/content/repositories/opendaylight.release/</url>
     </pluginRepository>
     <pluginRepository>
       <id>opendaylight-snapshot</id>

@@ -27,14 +27,20 @@ public abstract class ProviderNetworkManager {
     private static ProviderNetworkManager provider;
     protected static final int LLDP_PRIORITY = 1000;
     protected static final int NORMAL_PRIORITY = 0;
-
+    protected static final String OPENFLOW_10 = "1.0";
+    protected static final String OPENFLOW_13 = "1.3";
 
     public static ProviderNetworkManager getManager() {
         if (provider != null) return provider;
-        if (System.getProperty("OF1.3_Provider") != null) {
-            provider = new OF13ProviderManager();
-        } else {
-            provider = new OF10ProviderManager();
+        String ofVersion = System.getProperty("ovsdb.of.version", OPENFLOW_10);
+        switch (ofVersion) {
+            case OPENFLOW_13:
+                provider = new OF13ProviderManager();
+                break;
+            case OPENFLOW_10:
+            default:
+                provider = new OF10ProviderManager();
+                break;
         }
         return provider;
     }
@@ -55,9 +61,15 @@ public abstract class ProviderNetworkManager {
     }
 
     public abstract boolean hasPerTenantTunneling();
-    public abstract Status createTunnels(String tunnelType, String tunnelKey);
-    public abstract Status createTunnels(String tunnelType, String tunnelKey, Node source, Interface intf);
+
+//    public abstract Status createTunnels(String tunnelType, String tunnelKey);
+//    public abstract Status createTunnels(String tunnelType, String tunnelKey, Node source, Interface intf);
     public abstract Status createDedicatedNetworkTunnels(NeutronNetwork network, String tunnelType, String tunnelKey, Node source, Interface intf);
+
+    public abstract Status handleInterfaceUpdate(String tunnelType, String tunnelKey);
+    public abstract Status handleInterfaceUpdate(String tunnelType, String tunnelKey, Node source, Interface intf);
+    public abstract Status handleInterfaceDelete(String tunnelType, String tunnelKey, Node source, Interface intf, boolean isLastInstanceOnNode);
+
     /*
      * Initialize the Flow rules given the OVSDB node.
      * This method provides a set of common functionalities to initialize the Flow rules of an OVSDB node

@@ -11,17 +11,17 @@
 
 package org.opendaylight.ovsdb.neutron;
 
-//import static org.junit.Assert.assertEquals;
-//import static org.mockito.Matchers.any;
+import static org.junit.Assert.assertEquals;
+import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyObject;
-//import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.net.InetAddress;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -39,13 +39,14 @@ import org.powermock.modules.junit4.PowerMockRunner;
 @RunWith(PowerMockRunner.class)
 @PrepareForTest(ServiceHelper.class)
 public class AdminConfigManagerTest {
+
     @Test
-    public void testPopulateTunnelEndpoint() throws Exception {
+    public void testGetTunnelEndpoint() throws Exception {
         InetAddress testAddress = InetAddress.getByName("10.10.10.10");
 
         Node mockNode = mock(Node.class);
 
-        Map<String, Table<?>> ovsMap = new HashMap<String, Table<?>>();
+        ConcurrentMap<String, Table<?>> ovsMap = new ConcurrentHashMap<>();
 
         Open_vSwitch ovsTable = new Open_vSwitch();
         OvsDBMap localIp = new OvsDBMap();
@@ -54,13 +55,51 @@ public class AdminConfigManagerTest {
         ovsMap.put("Open_vSwitch", ovsTable);
 
         OVSDBConfigService ovsdbConfig = mock(ConfigurationService.class);
-//        when(ovsdbConfig.getRows(any(Node.class), anyString())).thenReturn(ovsMap);
+
+        when(ovsdbConfig.getRows(any(Node.class), anyString())).thenReturn(null)
+                                                               .thenReturn(ovsMap);
 
         PowerMockito.mockStatic(ServiceHelper.class);
         when(ServiceHelper.getGlobalInstance(eq(OVSDBConfigService.class), anyObject())).thenReturn(ovsdbConfig);
 
-        AdminConfigManager.getManager().populateTunnelEndpoint(mockNode);
+        // OVSDBConfigService is null
+        assertEquals(null, AdminConfigManager.getManager().getTunnelEndPoint(mockNode));
 
-//        assertEquals(testAddress, AdminConfigManager.getManager().getTunnelEndPoint(mockNode));
+        // Success...
+        assertEquals(testAddress, AdminConfigManager.getManager().getTunnelEndPoint(mockNode));
+    }
+
+    @Test
+    public void testGetTunnelEndpointWithNullRows() throws Exception {
+        InetAddress testAddress = InetAddress.getByName("10.10.10.10");
+
+        Node mockNode = mock(Node.class);
+
+        ConcurrentMap<String, Table<?>> ovsMap = new ConcurrentHashMap<>();
+
+        Open_vSwitch nullRow = new Open_vSwitch();
+        Open_vSwitch ovsRow1 = new Open_vSwitch();
+        Open_vSwitch ovsRow2 = new Open_vSwitch();
+        OvsDBMap invalidLocalIp = new OvsDBMap();
+        OvsDBMap localIp = new OvsDBMap();
+
+        ovsRow1.setOther_config(invalidLocalIp);
+
+        localIp.put("local_ip","10.10.10.10");
+        ovsRow2.setOther_config(localIp);
+
+        ovsMap.put("0", nullRow);
+        ovsMap.put("1", ovsRow1);
+        ovsMap.put("2", ovsRow2);
+
+        OVSDBConfigService ovsdbConfig = mock(ConfigurationService.class);
+        when(ovsdbConfig.getRows(any(Node.class), anyString())).thenReturn(ovsMap);
+
+        PowerMockito.mockStatic(ServiceHelper.class);
+        when(ServiceHelper.getGlobalInstance(eq(OVSDBConfigService.class), anyObject())).thenReturn(ovsdbConfig);
+
+
+        // Success...
+        assertEquals(testAddress, AdminConfigManager.getManager().getTunnelEndPoint(mockNode));
     }
 }

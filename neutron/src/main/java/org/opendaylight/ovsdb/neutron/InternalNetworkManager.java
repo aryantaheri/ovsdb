@@ -144,21 +144,32 @@ public class InternalNetworkManager {
         OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
 
         String bridgeUUID = this.getInternalBridgeUUID(node, bridgeName);
+        Bridge bridge = new Bridge();
+        OvsDBSet<String> failMode = new OvsDBSet<String>();
+        failMode.add("secure");
+        bridge.setFail_mode(failMode);
+
+        OvsDBSet<String> protocols = new OvsDBSet<String>();
+        if (!ProviderNetworkManager.getManager().hasPerTenantTunneling()) {
+            protocols.add("OpenFlow13");
+        } else {
+            protocols.add("OpenFlow10");
+        }
+        bridge.setProtocols(protocols);
+
         if (bridgeUUID == null) {
-            Bridge bridge = new Bridge();
             bridge.setName(bridgeName);
-            if (!ProviderNetworkManager.getManager().hasPerTenantTunneling()) {
-                OvsDBSet<String> protocols = new OvsDBSet<String>();
-                protocols.add("OpenFlow13");
-                bridge.setProtocols(protocols);
-            }
 
             StatusWithUuid statusWithUuid = ovsdbTable.insertRow(node, Bridge.NAME.getName(), null, bridge);
             if (!statusWithUuid.isSuccess()) return statusWithUuid;
             bridgeUUID = statusWithUuid.getUuid().toString();
             Port port = new Port();
             port.setName(bridgeName);
-            ovsdbTable.insertRow(node, Port.NAME.getName(), bridgeUUID, port);
+            Status status = ovsdbTable.insertRow(node, Port.NAME.getName(), bridgeUUID, port);
+            logger.debug("addInternalBridge : Inserting Bridge {} with protocols {} and status {}", bridgeUUID, protocols, status);
+        } else {
+            Status status = ovsdbTable.updateRow(node, Bridge.NAME.getName(), null, bridgeUUID, bridge);
+            logger.debug("addInternalBridge : Updating Bridge {} with protocols {} and status {}", bridgeUUID, protocols, status);
         }
 
         IConnectionServiceInternal connectionService = (IConnectionServiceInternal)ServiceHelper.getGlobalInstance(IConnectionServiceInternal.class, this);

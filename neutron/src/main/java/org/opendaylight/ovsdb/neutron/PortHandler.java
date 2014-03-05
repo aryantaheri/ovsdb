@@ -31,7 +31,7 @@ public class PortHandler extends BaseHandler
      * Invoked when a port creation is requested
      * to indicate if the specified port can be created.
      *
-     * @param port     An instance of proposed new Port Port object.
+     * @param port     An instance of proposed new Port object.
      * @return A HTTP status code to the creation request.
      */
     @Override
@@ -46,31 +46,16 @@ public class PortHandler extends BaseHandler
      */
     @Override
     public void neutronPortCreated(NeutronPort port) {
-
         int result = canCreatePort(port);
         if (result != HttpURLConnection.HTTP_CREATED) {
             logger.error(" Port create validation failed result - {} ", result);
             return;
         }
 
-        String tenantID = convertNeutronIDToKey(port.getTenantID());
-        String networkID = convertNeutronIDToKey(port.getNetworkUUID());
-        String portID = convertNeutronIDToKey(port.getID());
-        String portDesc = port.getName();
-        Boolean portAdminState = port.getAdminStateUp();
-
-        // Create Full Mesh Tunnels
-        /*
-         * Is this required ?
-         * The Tunnel Creation logic is completely owned by the Southbound handler at this point.
-
-        NeutronNetwork network = this.neutronNetworkCache.getNetwork(port.getNetworkUUID());
-        ProviderNetworkManager.getManager().createTunnels(network.getProviderNetworkType(),
-                                                          network.getProviderSegmentationID());
-         */
         logger.debug(" Port-ADD successful for tenant-id - {}," +
-                " network-id - {}, port-id - {}, result - {} ",
-                tenantID, networkID, portID, result);
+                     " network-id - {}, port-id - {}, result - {} ",
+                     port.getTenantID(), port.getNetworkUUID(),
+                     port.getID(), result);
     }
 
     /**
@@ -116,8 +101,7 @@ public class PortHandler extends BaseHandler
      */
     @Override
     public int canDeletePort(NeutronPort port) {
-        int result = HttpURLConnection.HTTP_OK;
-        return result;
+        return HttpURLConnection.HTTP_OK;
     }
 
     /**
@@ -134,11 +118,9 @@ public class PortHandler extends BaseHandler
             return;
         }
 
-        String tenantID = convertNeutronIDToKey(port.getTenantID());
-        String networkID = convertNeutronIDToKey(port.getNetworkUUID());
-        String portID = convertNeutronIDToKey(port.getID());
         logger.debug(" PORT delete successful for tenant-id - {}, " +
-                     " network-id - {}, port-id - {}", tenantID, networkID, portID);
-
+                     " network-id - {}, port-id - {}",
+                     port.getTenantID(), port.getNetworkUUID(),
+                     port.getID());
     }
 }
