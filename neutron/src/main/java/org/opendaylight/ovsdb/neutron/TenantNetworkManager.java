@@ -157,6 +157,7 @@ public class TenantNetworkManager {
         }
 
         int internalVlan = nodeConfiguration.assignInternalVlan(networkId);
+        logger.debug("networkCreated: node {}, networkId {}, internalVlan {}", node, networkId, internalVlan);
         if (enableContainer && internalVlan != 0) {
             IContainerManager containerManager = (IContainerManager)ServiceHelper.getGlobalInstance(IContainerManager.class, this);
             if (containerManager == null) {
@@ -254,7 +255,7 @@ public class TenantNetworkManager {
             return false;
         }
 
-        logger.debug("Tenant Network {} with Segmenation-id {} is NOT present in Node {}",
+        logger.debug("Tenant Network {} with Segmentation-id {} is NOT present in Node {}",
                 networkId, segmentationId, node);
 
         return false;
@@ -321,9 +322,9 @@ public class TenantNetworkManager {
         }
 
         int vlan = nodeConfiguration.getInternalVlan(network.getID());
-        logger.debug("Programming Vlan {} on {}", vlan, portUUID);
+        logger.debug("Programming Vlan {} on port {} in node {}", vlan, portUUID, node);
         if (vlan <= 0) {
-            logger.error("Unable to get an internalVlan for Network {}", network);
+            logger.error("Unable to get an internalVlan for Network {} Port {} Node {}", network, portUUID, node);
             return;
         }
         OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
@@ -542,6 +543,10 @@ public class TenantNetworkManager {
     public String getExInfNameForNetwork(NeutronNetwork network){
         return ("ex-"+network.getNetworkName()).substring(0, Math.min(11, 3+network.getNetworkName().length()));
     }
+    public String getExInfPrefix(){
+        return "ex-";
+    }
+
     /*
      * TODO: Move these to AdminConfigurationManager
      * Linux bridge length is 14, and for OpenStack compatibility we restrict it to 11
@@ -560,6 +565,10 @@ public class TenantNetworkManager {
      */
     private String getDedicatedIntBridgeNameForNetwork(NeutronNetwork network){
         return ("brint-"+network.getNetworkUUID()).substring(0, 11);
+    }
+
+    public String getDedicatedIntBridgeNameForNetwork(String networkUUID){
+        return ("brint-"+networkUUID).substring(0, 11);
     }
 
     private String getPatchToDedicatedIntForNetwork(NeutronNetwork network){
@@ -647,13 +656,17 @@ public class TenantNetworkManager {
 //              }
               Status status = updatePortBridge(node, brIntUUID, networkIntBrUUID, portUUID, intf);
               if (!status.isSuccess()){
-                  logger.error("adjustPortBridgeAttachment: updatePortBridge was not successful {}", status.toString());
+                  logger.error("adjustPortBridgeAttachment: updatePortBridge was not successful {} on node {}", status.toString(), node);
                   return;
               } else{
-                  logger.debug("adjustPortBridgeAttachment: updatePortBridge was successful {}", status.toString());
+                  logger.debug("adjustPortBridgeAttachment: updatePortBridge was successful {} on node {}", status.toString(), node);
               }
           } else {
               logger.debug("adjustPortBridgeAttachment: Skipping adjustment, port isn't attached to int bridge, or is also attached to network int br, or network int bridge doesn't exist");
+              logger.debug("adjustPortBridgeAttachment: node {}, portInIntBr {}, portInNetworkIntBr {}", node, portInIntBr, portInNetworkIntBr);
+              if (!portInIntBr && !portInNetworkIntBr){
+                  logger.error("adjustPortBridgeAttachment: port on node {} is not in br-int {} nor brint-xy {}", node, brIntUUID, networkIntBrName);
+              }
           }
       } catch (Exception e) {
           logger.error("Can not adjust port bridge attachment", e);
