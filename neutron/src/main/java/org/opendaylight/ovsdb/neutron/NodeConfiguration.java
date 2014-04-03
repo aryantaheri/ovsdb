@@ -88,6 +88,11 @@ public class NodeConfiguration {
                     this.internalVlanInUse(vlan);
                     this.tenantVlanMap.put(networkId, vlan);
 
+                } else if (vlan != 0 && networkId == null) {
+                    // FIXME: this is just a workaround for dedicated network bridges
+                    logger.error("initializeNodeConfiguration found port {} with vlan {} without network on node {}", port, vlan, node);
+                    logger.error("initializeNodeConfiguration removing vlan {} on node {}", vlan, node);
+                    this.internalVlanInUse(vlan);
                 }
             }
         }
