@@ -192,13 +192,16 @@ public class SouthboundHandler extends BaseHandler implements OVSDBInventoryList
             if (network != null && !network.getRouterExternal()) {
                 if (ProviderNetworkManager.getManager().hasPerTenantTunneling()) {
                     int vlan = TenantNetworkManager.getManager().networkCreated(node, network.getID());
-                    logger.trace("Neutron Network {} Created with Internal Vlan : {}", network.toString(), vlan);
+                    logger.debug("Neutron Network {} Created with Internal Vlan : {} on Node {}", network.getNetworkUUID(), vlan, node);
 
                     String portUUID = this.getPortIdForInterface(node, uuid, intf);
                     if (portUUID != null) {
                         TenantNetworkManager.getManager().programTenantNetworkInternalVlan(node, portUUID, network);
                     }
                 }
+                this.handleInterfaceUpdate(node, uuid, intf);
+            }
+            if (intf.getName().startsWith(TenantNetworkManager.getManager().getExInfPrefix())){
                 this.handleInterfaceUpdate(node, uuid, intf);
             }
         } else if (Port.NAME.getName().equalsIgnoreCase(tableName)) {
@@ -248,18 +251,18 @@ public class SouthboundHandler extends BaseHandler implements OVSDBInventoryList
             if(network.getNetworkName().startsWith("ipsec")){
                 ProviderNetworkManager.getManager().handleInterfaceUpdate("ipsec_gre",
                         network.getProviderSegmentationID(), node, intf);
-                logger.info("IPSec tunnels requested for network: {} {}", network.getNetworkName(), network);
+                logger.debug("IPSec tunnels requested for network: {} {}", network.getNetworkName(), network);
 
             } if (network.getNetworkName().startsWith("secnet")){
                 ProviderNetworkManager.getManager().createDedicatedNetworkTunnels(network, network.getProviderNetworkType(),
                         network.getProviderSegmentationID(), node, intf);
-                logger.info("Dedicated network tunnels requested for network: {} {}, Node {}, Interface {}", network.getNetworkName(), network, node, intf);
+                logger.debug("Dedicated network tunnels requested for network: {} {}, Node {}, Interface {}", network.getNetworkName(), network, node, intf);
             } else {
 //                ProviderNetworkManager.getManager().createTunnels(network.getProviderNetworkType(),
 //                        network.getProviderSegmentationID(), node, intf);
                 ProviderNetworkManager.getManager().handleInterfaceUpdate(network.getProviderNetworkType(),
                         network.getProviderSegmentationID(), node, intf);
-                logger.info("Non-IPSec tunnels requested for network: {} {}", network.getNetworkName(), network);
+                logger.debug("Non-IPSec tunnels requested for network: {} {}", network.getNetworkName(), network);
             }
 
 
