@@ -154,7 +154,7 @@ public class AdminConfigManager {
 
 
     public InetAddress getDedicatedNetworkTunnelEndPoint (Node node, NeutronNetwork network){
-        logger.debug("getTunnelEndPointForNetwork node {} network {}", node, network);
+        logger.debug("getDedicatedNetworkTunnelEndPoint node {} network {}", node, network);
         InetAddress address = null;
         OVSDBConfigService ovsdbTable = (OVSDBConfigService)ServiceHelper.getGlobalInstance(OVSDBConfigService.class, this);
         String networkExInterfaceName = TenantNetworkManager.getManager().getExInfNameForNetwork(network);
@@ -170,7 +170,7 @@ public class AdminConfigManager {
                     }
                 }
                 if (networkExInterface == null){
-                    logger.error("getTunnelEndPointForNetwork failed: exInterface is missing on Node {} Network {} exInterfaceName {}", node, network, networkExInterfaceName);
+                    logger.debug("getDedicatedNetworkTunnelEndPoint failed: exInterface is missing on Node {} Network {} exInterfaceName {}", node, network, networkExInterfaceName);
                     return null;
                 }
                 OvsDBMap<String, String> otherConfigs = networkExInterface.getOther_config();
@@ -180,15 +180,15 @@ public class AdminConfigManager {
                     logger.debug("getTunnelEndPointForNetwork succeed: Node {}, Network {}, exInterface {}, TunnelEndPoint {}", node, network, networkExInterface, networkTunnelEndPoint);
                     return address;
                 } else {
-                    logger.error("getTunnelEndPointForNetwork failed: otherConfigs is missing Node {}, Network {}, Interface {}", node, network, networkExInterface);
+                    logger.debug("getDedicatedNetworkTunnelEndPoint failed: otherConfigs is missing Node {}, Network {}, Interface {}", node, network, networkExInterface);
                     return null;
                 }
             } else {
-                logger.error("getTunnelEndPointForNetwork failed: There is no interface in Node {}", node);
+                logger.debug("getDedicatedNetworkTunnelEndPoint failed: There is no interface in Node {}", node);
                 return null;
             }
         } catch (Exception e) {
-            logger.error("getTunnelEndPointForNetwork failed: Cannot get TunnelEndPoint for Network {} in Node {}, exception", network, node, e);
+            logger.error("getDedicatedNetworkTunnelEndPoint failed: Cannot get TunnelEndPoint for Network {} in Node {}, exception", network, node, e);
             return null;
         }
     }
