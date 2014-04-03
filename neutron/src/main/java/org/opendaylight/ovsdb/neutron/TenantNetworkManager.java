@@ -629,7 +629,7 @@ public class TenantNetworkManager {
       // 3- All ports in br-int are of tap type
       String brIntUUID = InternalNetworkManager.getManager().getInternalBridgeUUID(node, AdminConfigManager.getManager().getIntegrationBridgeName());
       if (brIntUUID == null) {
-          logger.error("Failed to retrieve Integration Bridge in Node {}", node);
+          logger.error("adjustPortBridgeAttachment: Failed to retrieve Integration Bridge in Node {}", node);
           return;
       }
 
@@ -659,7 +659,7 @@ public class TenantNetworkManager {
                   logger.error("adjustPortBridgeAttachment: updatePortBridge was not successful {} on node {}", status.toString(), node);
                   return;
               } else{
-                  logger.debug("adjustPortBridgeAttachment: updatePortBridge was successful {} on node {}", status.toString(), node);
+                  logger.info("adjustPortBridgeAttachment: updatePortBridge for port {} interface {} network {} was successful {} on node {}", port, intf, network, status.toString(), node);
               }
           } else {
               logger.debug("adjustPortBridgeAttachment: Skipping adjustment, port isn't attached to int bridge, or is also attached to network int br, or network int bridge doesn't exist");
@@ -669,7 +669,7 @@ public class TenantNetworkManager {
               }
           }
       } catch (Exception e) {
-          logger.error("Can not adjust port bridge attachment", e);
+          logger.error("adjustPortBridgeAttachment: Can not adjust port bridge attachment", e);
       }
 
     }
@@ -863,7 +863,7 @@ public class TenantNetworkManager {
                 if (portID.toString().equalsIgnoreCase(portUUID)) return true;
             }
         } else {
-            logger.debug("isPortPresentInBridge Bridge {} doesn't exist", bridgeUUID);
+            logger.error("isPortPresentInBridge Bridge {} doesn't exist", bridgeUUID);
         }
         return false;
     }
