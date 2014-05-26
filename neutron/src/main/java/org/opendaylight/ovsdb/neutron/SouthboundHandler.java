@@ -196,6 +196,7 @@ public class SouthboundHandler extends BaseHandler implements OVSDBInventoryList
 
                     String portUUID = this.getPortIdForInterface(node, uuid, intf);
                     if (portUUID != null) {
+                        TenantNetworkManager.getManager().adjustPortBridgeAttachment(node, network, portUUID, intf);
                         TenantNetworkManager.getManager().programTenantNetworkInternalVlan(node, portUUID, network);
                     }
                 }
@@ -217,7 +218,7 @@ public class SouthboundHandler extends BaseHandler implements OVSDBInventoryList
                         // TODO These are called for each interface, without requiring to know the interface
                         // Might be useful when a port is bonded to two interfaces which belong to different networks
                         TenantNetworkManager.getManager().prepareTenantNetworkBridges(node, network);
-                        TenantNetworkManager.getManager().adjustPortBridgeAttachment(node, network, uuid, port, intf);
+                        TenantNetworkManager.getManager().adjustPortBridgeAttachment(node, network, uuid, intf);
                         TenantNetworkManager.getManager().programTenantNetworkInternalVlan(node, uuid, network);
                     }
                 } catch (Exception e) {

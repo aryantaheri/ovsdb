@@ -297,10 +297,11 @@ public class TenantNetworkManager {
         INeutronPortCRUD neutronPortService = (INeutronPortCRUD)ServiceHelper.getGlobalInstance(INeutronPortCRUD.class, this);
         NeutronPort neutronPort = neutronPortService.getPort(neutronPortId);
         logger.trace("neutronPort {}", neutronPort);
+        // FIXME: there can be a bug here, when neutronPort is null. this silently fails, and there might be no more events to trigger the functionality
         if (neutronPort == null) return null;
         INeutronNetworkCRUD neutronNetworkService = (INeutronNetworkCRUD)ServiceHelper.getGlobalInstance(INeutronNetworkCRUD.class, this);
         NeutronNetwork neutronNetwork = neutronNetworkService.getNetwork(neutronPort.getNetworkUUID());
-        logger.debug("{} mappped to {}", intf, neutronNetwork);
+        logger.debug("getTenantNetworkForInterface: {} mappped to {}", intf, neutronNetwork);
         return neutronNetwork;
     }
 
@@ -616,7 +617,8 @@ public class TenantNetworkManager {
      * @param network
      * @param node
      */
-    public void adjustPortBridgeAttachment(Node node, NeutronNetwork network, String portUUID, Port port, Interface intf){
+    public void adjustPortBridgeAttachment(Node node, NeutronNetwork network, String portUUID, Interface intf){
+      logger.debug("adjustPortBridgeAttachment node {} network {} portUUID {} interface {}", node, network.getNetworkName(), portUUID, intf.getName());
         // FIXME: For the sake of simplicity not using    network.isDedicatedBridges()
         // if (!network.isDedicatedBridges() && !network.getNetworkName().toLowerCase().startsWith("secnet")) {
       if (!network.getNetworkName().toLowerCase().startsWith("secnet")) {
@@ -659,7 +661,7 @@ public class TenantNetworkManager {
                   logger.error("adjustPortBridgeAttachment: updatePortBridge was not successful {} on node {}", status.toString(), node);
                   return;
               } else{
-                  logger.info("adjustPortBridgeAttachment: updatePortBridge for port {} interface {} network {} was successful {} on node {}", port, intf, network, status.toString(), node);
+                  logger.info("adjustPortBridgeAttachment: updatePortBridge for portUUID {} interface {} network {} was successful {} on node {}", portUUID, intf, network, status.toString(), node);
               }
           } else {
               logger.debug("adjustPortBridgeAttachment: Skipping adjustment, port isn't attached to int bridge, or is also attached to network int br, or network int bridge doesn't exist");
